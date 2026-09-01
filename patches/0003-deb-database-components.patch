@@ -1,6 +1,28 @@
 --- a/glitchtip/settings.py
 +++ b/glitchtip/settings.py
-@@ -890,17 +890,6 @@
+@@ -877,12 +877,17 @@
+ 
+ # Database
+ # https://docs.djangoproject.com/en/dev/ref/settings/#databases
+-# Use either DATABASE_URL or individual components
++# Database settings from dbconfig-pgsql via DATABASE_* env vars (see glitchtip.env).
+ DATABASES = {
+-    "default": env.db(
+-        "DATABASE_URL", default="postgres://postgres:postgres@postgres:5432/postgres"
+-    )
++    "default": {
++        "NAME": env.str("DATABASE_NAME"),
++        "USER": env.str("DATABASE_USER", "postgres"),
++        "PASSWORD": env.str("DATABASE_PASSWORD", ""),
++    }
+ }
++if env.str("DATABASE_HOST", None):
++    DATABASES["default"]["HOST"] = env.str("DATABASE_HOST")
++    DATABASES["default"]["PORT"] = env.str("DATABASE_PORT", "5432")
+ if env("READ_ONLY_DATABASE_URL"):
+     DATABASES["read_only"] = env.db("READ_ONLY_DATABASE_URL")
+ if env("MAINTENANCE_DATABASE_URL"):
+@@ -890,17 +895,6 @@
  
  MAINTENANCE_DATABASE_ALIAS = "maintenance" if "maintenance" in DATABASES else "default"
  

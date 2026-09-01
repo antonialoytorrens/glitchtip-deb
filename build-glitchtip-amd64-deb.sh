@@ -18,7 +18,7 @@
 #   GLITCHTIP_DB_USER            (default: glitchtip)
 #   GLITCHTIP_DB_HOST            (default: 127.0.0.1)
 #   GLITCHTIP_HTTP_PORT          (default: 38417)
-#   PKG_REVISION                 (default: 4)
+#   PKG_REVISION                 (default: 5)
 #   INSTALL_PREFIX               (default: /opt/glitchtip)
 #   KEEP_CHROOT                  (default: true — chroot mode only)
 #   DISABLE_DEBOOTSTRAP_CHROOT   (default: false — set true to build on host)
@@ -44,7 +44,7 @@ if [ -z "${GLITCHTIP_VERSION:-}" ] && [ -f "${VERSION_FILE}" ]; then
 fi
 GLITCHTIP_VERSION="${GLITCHTIP_VERSION:-6.2.6}"
 
-PKG_REVISION="${PKG_REVISION:-4}"
+PKG_REVISION="${PKG_REVISION:-5}"
 KEEP_CHROOT="${KEEP_CHROOT:-true}"
 DISABLE_DEBOOTSTRAP_CHROOT="${DISABLE_DEBOOTSTRAP_CHROOT:-false}"
 FETCH_SOURCES="${FETCH_SOURCES:-false}"
