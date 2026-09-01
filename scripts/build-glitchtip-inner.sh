@@ -241,7 +241,12 @@ print(m.group(1) if m else '')
 fi
 
 DB_NAME=$(grep '^DATABASE_URL=' "${ENV_FILE}" | sed -n 's|.*/\([^/?]*\).*|\1|p')
-DB_USER=$(grep '^DATABASE_URL=' "${ENV_FILE}" | sed -n 's|postgres://\([^:]*\):.*|\1|p')
+DB_USER=$(grep '^DATABASE_URL=' "${ENV_FILE}" | sed -n 's|^DATABASE_URL=postgres://\([^:]*\):.*|\1|p')
+
+if [ -z "${DB_USER}" ] || [[ "${DB_USER}" == *"="* ]]; then
+  echo "!!! Could not parse database user from DATABASE_URL in ${ENV_FILE}" >&2
+  exit 1
+fi
 
 chmod 640 "${ENV_FILE}"
 chown root:glitchtip "${ENV_FILE}"
