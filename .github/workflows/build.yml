@@ -10,23 +10,16 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: debian:trixie
     timeout-minutes: 90
     env:
       DEBIAN_FRONTEND: noninteractive
+      GLITCHTIP_DOMAIN: ci.example.test
 
     steps:
-      - name: Prepare container
-        run: apt-get update -qq && apt-get install -y -qq git ca-certificates curl tar
-
       - uses: actions/checkout@v7
 
       - name: Build GlitchTip .deb
-        env:
-          GLITCHTIP_DOMAIN: ci.example.test
-          DISABLE_DEBOOTSTRAP_CHROOT: 'true'
-          KEEP_CHROOT: false
-        run: bash build-glitchtip-amd64-deb.sh
+        run: docker build --target artifact --output . .
 
       - name: Verify .deb venv
         run: |

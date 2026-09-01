@@ -6,99 +6,84 @@ Experimental `.deb` packaging for [GlitchTip](https://glitchtip.com/). This does
 
 ## Quick start
 
+**Note:** `docker build` needs ~10 GB free disk (npm + Rust + venv). GitHub Actions runners have enough space.
+
+### Build (Docker)
+
 ```bash
-sudo ./build-glitchtip-amd64-deb.sh
-sudo dpkg -i glitchtip_$(cat VERSION)-4_amd64.deb
+docker build --target artifact --output . .
+sudo dpkg -i glitchtip_$(cat VERSION)-5_amd64.deb
 sudo apt-get install -f
 ```
 
-The build script downloads GlitchTip backend and frontend sources from GitLab tags automatically (see `VERSION`). Downloaded trees are gitignored:
+### Install from GitHub Release
 
-- `glitchtip-backend-v*/`
-- `glitchtip-frontend-v*/`
-
-Force a fresh download after bumping `VERSION`:
+Download the latest `.deb` from [Releases](https://github.com/antonialoytorrens/glitchtip-deb/releases), then:
 
 ```bash
-FETCH_SOURCES=true sudo -E ./build-glitchtip-amd64-deb.sh
+sudo dpkg -i glitchtip_*_amd64.deb
+sudo apt-get install -f
 ```
 
-## Environment variables
+### Install via Pacstall (builds from source on host)
+
+```bash
+pacstall -I glitchtip@github:antonialoytorrens/glitchtip-deb
+```
+
+This compiles GlitchTip on your machine (~60–90 min). Prefer the pre-built `.deb` from Releases for faster installs.
+
+## Environment variables (build)
+
+Set when running `docker build` (build-args / `-e` in Dockerfile):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GLITCHTIP_VERSION` | `VERSION` file | GlitchTip release to package |
 | `GLITCHTIP_DOMAIN` | `glitchtip.antonialoytorrens.com` | Hostname baked into config |
-| `GLITCHTIP_HTTP_PORT` | `38417` | Granian listen port on `127.0.0.1` (proxy from nginx/apache) |
-| `DISABLE_DEBOOTSTRAP_CHROOT` | `false` | `true` = build on host (CI uses this) |
-| `KEEP_CHROOT` | `true` | Keep debootstrap chroot after build |
-| `FETCH_SOURCES` | `false` | Re-download GitLab tag archives |
-| `PKG_REVISION` | `4` | Debian package revision (`glitchtip_VERSION-REV_amd64.deb`) |
+| `GLITCHTIP_HTTP_PORT` | `38417` | Granian listen port on `127.0.0.1` |
+| `GLITCHTIP_DB_NAME` | `glitchtip` | PostgreSQL database name (dbconfig) |
+| `GLITCHTIP_DB_USER` | `glitchtip` | PostgreSQL role (dbconfig) |
+| `GLITCHTIP_DB_HOST` | `127.0.0.1` | PostgreSQL host (dbconfig-no-thanks fallback) |
+
+Bump GlitchTip upstream version in [`VERSION`](VERSION) and `pkgver` in [`packages/glitchtip/glitchtip.pacscript`](packages/glitchtip/glitchtip.pacscript).
 
 ## CI
 
-GitHub Actions workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) runs on push to `master` only (no PR builds).
-
-The build job runs inside a **`debian:trixie` container** with `DISABLE_DEBOOTSTRAP_CHROOT=true`, so the embedded venv uses the same Debian Python as the target host (not Ubuntu’s `setup-python`).
-
-Each successful run publishes a GitHub **pre-release** tagged `v{VERSION}-pre.{run}` with the `.deb` and its `.sha256` checksum file attached (e.g. `v6.2.6-pre.42`).
+[`.github/workflows/build.yml`](.github/workflows/build.yml) runs on push to `master`: `docker build` inside `debian:trixie`, then publishes a GitHub **pre-release** with the `.deb` and `.sha256` checksum.
 
 ## Version monitoring
 
-[`.github/workflows/check-version.yml`](.github/workflows/check-version.yml) runs weekly (Mondays 08:00 UTC) and queries [release-monitoring.org](https://release-monitoring.org/project/392074/) (Anitya project `392074`). When a newer **stable** version exists, it opens a GitHub issue labelled `new-version`.
-
-Run locally:
+[`.github/workflows/check-version.yml`](.github/workflows/check-version.yml) runs weekly and opens an issue when a newer stable GlitchTip exists on [release-monitoring.org](https://release-monitoring.org/project/392074/).
 
 ```bash
 ./scripts/check-glitchtip-version.sh
 ```
 
-Skip the Anitya API and compare against a known upstream version (e.g. when release-monitoring.org is unavailable):
-
-```bash
-VERSION=6.2.7 ./scripts/check-glitchtip-version.sh
-```
-
 ## Patches and trimmed profile
 
-Before building the Python venv, patches under [`patches/`](patches/) are applied to the upstream backend checkout. This package targets **local PostgreSQL + filesystem storage** and omits optional upstream dependencies to save disk space and build time.
+Patches live in [`packages/glitchtip/`](packages/glitchtip/) and are applied in the pacscript `prepare()` step:
 
-- [`patches/0001-trim-optional-deps.patch`](patches/0001-trim-optional-deps.patch) — trims `pyproject.toml` (drops DuckDB, MCP, cloud storage, uWSGI, …).
-- [`patches/0002-local-filesystem-profile.patch`](patches/0002-local-filesystem-profile.patch) — adjusts `glitchtip/settings.py` for the trimmed profile: removes the `storages` app from `INSTALLED_APPS`, blocks S3 at startup, and sets `STATIC_ROOT` / `STATICFILES_DIRS` for local paths (configurable via `MEDIA_ROOT` and `STATIC_ROOT` in `/etc/glitchtip/glitchtip.env`).
-- [`patches/0003-deb-database-components.patch`](patches/0003-deb-database-components.patch) — reads PostgreSQL settings from `DATABASE_NAME` / `DATABASE_USER` (and optional `DATABASE_HOST` / `DATABASE_PASSWORD`) written by dbconfig-pgsql; no `DATABASE_URL`.
+- `0001-trim-optional-deps.patch` — trims optional Python deps (DuckDB, MCP, cloud storage, uWSGI, …)
+- `0002-local-filesystem-profile.patch` — local filesystem storage profile in `settings.py`
+- `0003-deb-database-components.patch` — `DATABASE_*` env vars for dbconfig-pgsql
 
-Removed or changed dependencies (0001): `duckdb`, `mcp`, `uWSGI`, `uwsgi-chunked`, `google-cloud-logging`, `django-storages` (+ boto3/azure/gcs), `arro3-core`, `arro3-io`; `granian[reload,uvloop]` → `granian[uvloop]`.
+### Disabled features
 
-### Disabled or unavailable features
-
-These GlitchTip capabilities are **not shipped** in this `.deb` (removing the Python packages above). Setting the env var alone is not enough — the code paths need libraries that are not installed.
-
-| Feature | Env var | Effect when missing |
-|---------|---------|---------------------|
-| Cold storage (Parquet archival) | `GLITCHTIP_ENABLE_DUCKDB` | No long-term event/log archive beyond PostgreSQL retention. Shipped as `false`. |
-| MCP (AI agent API) | `GLITCHTIP_ENABLE_MCP` | No `/mcp` OAuth or MCP tools. Shipped as `false`. |
-| S3 / Azure / GCS media & uploads | `AWS_*`, `AZURE_*`, `GS_*` | Default storage is local filesystem (`/var/lib/glitchtip/uploads`). Cloud backends will fail at runtime. |
-| GCP structured logging | `DJANGO_LOGGING_HANDLER_CLASS=google.cloud...` | Use default `logging.StreamHandler` (journald via systemd). |
-| uWSGI deployment | — | Use the bundled Granian ASGI unit (`glitchtip.service`). WSGI is deprecated upstream anyway. |
-| Granian auto-reload | — | Production server only; no file-watcher reload extra. |
+| Feature | Effect when missing |
+|---------|---------------------|
+| Cold storage (DuckDB) | No Parquet archival beyond PostgreSQL retention |
+| MCP (AI agent API) | No `/mcp` endpoints |
+| S3 / Azure / GCS storage | Local filesystem only (`/var/lib/glitchtip/uploads`) |
+| uWSGI | Use bundled Granian ASGI (`glitchtip.service`) |
 
 ### Still included
 
-- Error/issue tracking, performance spans (hot storage in PostgreSQL)
-- **Logs** (OTLP ingest) — `GLITCHTIP_ENABLE_LOGS` defaults to upstream `true`
-- **Uptime monitoring** — `GLITCHTIP_ENABLE_UPTIME` defaults to upstream `true`
-- Native symbolication (`symbolic`), minidumps, Rust ingest (`glitchtip-rust`)
+Error/issue tracking, performance spans, logs, uptime monitoring, native symbolication, minidumps, Rust ingest.
 
-Valkey is **required** at runtime: the `.deb` depends on `valkey-server` and ships `VALKEY_URL=redis://127.0.0.1:6379/0` in `/etc/glitchtip/glitchtip.env`.
+Valkey is **required** at runtime (`valkey-server`).
 
 ### Database (dbconfig-pgsql)
 
-The package depends on `dbconfig-pgsql | dbconfig-no-thanks`. On install with dbconfig-pgsql, dbconfig writes `/etc/dbconfig-common/glitchtip.conf`; the postinst copies settings into `/etc/glitchtip/glitchtip.env`:
+Depends on `dbconfig-pgsql | dbconfig-no-thanks`. See previous docs in git history for ident vs password auth details.
 
-- **ident + local socket** (typical Debian setup): `DATABASE_NAME` and `DATABASE_USER` only — no password, no host. GlitchTip connects via unix socket as the `glitchtip` system user.
-- **password auth** (remote or explicit password): also sets `DATABASE_PASSWORD`, `DATABASE_HOST`, and `DATABASE_PORT`.
-- **dbconfig-no-thanks**: creates a local PostgreSQL role/database with a generated password and writes `DATABASE_*` TCP settings into `glitchtip.env`.
-
-There is no upgrade path from older installs — purge and reinstall.
-
-Reconfigure after changing database settings: `sudo dpkg-reconfigure glitchtip`.
+Reconfigure: `sudo dpkg-reconfigure glitchtip`.
