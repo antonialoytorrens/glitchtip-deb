@@ -1,0 +1,4 @@
+glitchtip-backend-v*/
+glitchtip-frontend-v*/
+.cache/
+*.deb

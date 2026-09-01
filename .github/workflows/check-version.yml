@@ -1,0 +1,80 @@
+name: Check GlitchTip version
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+    inputs:
+      upstream_version:
+        description: Upstream version to compare (skips release-monitoring.org when set)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for newer stable version
+        id: check
+        env:
+          VERSION: ${{ inputs.upstream_version }}
+        run: |
+          chmod +x ./scripts/check-glitchtip-version.sh
+          set +e
+          NEW_VERSION="$(./scripts/check-glitchtip-version.sh)"
+          STATUS=$?
+          set -e
+          echo "status=${STATUS}" >> "${GITHUB_OUTPUT}"
+          if [ "${STATUS}" -eq 1 ]; then
+            echo "new_version=${NEW_VERSION}" >> "${GITHUB_OUTPUT}"
+          fi
+          exit 0
+
+      - name: Create GitHub issue for new version
+        if: steps.check.outputs.status == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW_VERSION: ${{ steps.check.outputs.new_version }}
+        run: |
+          TITLE="GlitchTip ${NEW_VERSION} available"
+          EXISTING="$(gh issue list --state open --label new-version --search "${TITLE}" --json number --jq 'length')"
+          if [ "${EXISTING}" != "0" ]; then
+            echo "Issue already open for ${NEW_VERSION}, skipping."
+            exit 0
+          fi
+
+          PACKAGED="$(tr -d '[:space:]' < VERSION)"
+          gh issue create \
+            --title "${TITLE}" \
+            --label new-version \
+            --body "$(cat <<EOF
+## Summary
+
+A newer stable GlitchTip release is available on [release-monitoring.org](https://release-monitoring.org/project/392074/).
+
+| | Version |
+|---|---|
+| Packaged | \`${PACKAGED}\` |
+| Upstream stable | \`${NEW_VERSION}\` |
+
+## Checklist
+
+- [ ] Update [\`VERSION\`](VERSION) to \`${NEW_VERSION}\`
+- [ ] Run build with \`FETCH_SOURCES=true\` to download the new tags
+- [ ] Review [\`patches/\`](patches/) for compatibility
+- [ ] Verify CI build passes
+
+## Links
+
+- [Anitya project](https://release-monitoring.org/project/392074/)
+- [Backend tag v${NEW_VERSION}](https://gitlab.com/glitchtip/glitchtip-backend/-/tags/v${NEW_VERSION})
+- [Frontend tag v${NEW_VERSION}](https://gitlab.com/glitchtip/glitchtip-frontend/-/tags/v${NEW_VERSION})
+EOF
+)"

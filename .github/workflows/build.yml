@@ -1,0 +1,33 @@
+name: Build .deb
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq curl tar ca-certificates
+
+      - name: Build GlitchTip .deb
+        env:
+          GLITCHTIP_DOMAIN: ci.example.test
+          DISABLE_DEBOOTSTRAP_CHROOT: 'true'
+          KEEP_CHROOT: false
+        run: sudo -E ./build-glitchtip-amd64-deb.sh
+
+      - name: Publish pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/publish-prerelease.sh
