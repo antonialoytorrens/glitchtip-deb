@@ -198,7 +198,7 @@ mkdir -p "${BUILD_ROOT}/var/lib/glitchtip/uploads"
 mkdir -p "${BUILD_ROOT}/var/lib/glitchtip/static"
 mkdir -p "${BUILD_ROOT}/var/log/glitchtip"
 
-mkdir -p "${BUILD_ROOT}/usr/share/dbconfig-common/data/glitchtip/install/pgsql"
+mkdir -p "${BUILD_ROOT}/usr/share/dbconfig-common/data/glitchtip/install"
 cat > "${BUILD_ROOT}/usr/share/dbconfig-common/data/glitchtip/install/pgsql" << 'DBCSQL'
 -- GlitchTip: schema managed by Django migrations (manage.py migrate)
 SELECT 1;
