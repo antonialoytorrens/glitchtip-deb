@@ -22,7 +22,7 @@ ADD https://ftp.debian.org/debian/pool/main/s/spdx-licenses/spdx-licenses_${SPDX
 
 RUN apt-get install -y -qq -f \
     /var/cache/apt/archives/pacstall_${PACSTALL_VERSION}_all.deb \
-    /var/cache/apt/archives/spdx-licenses_${SPDX_LICENSES_VERSION}_all.deb \
+    /var/cache/apt/archives/spdx-licenses_${SPDX_LICENSES_VERSION}_all.deb
 
 RUN apt-get clean \
   && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
