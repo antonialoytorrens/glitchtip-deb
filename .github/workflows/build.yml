@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Prepare container (git for checkout)
-        run: apt-get update -qq && apt-get install -y -qq git ca-certificates
+        run: apt-get update -qq && apt-get install -y -qq git ca-certificates curl tar
 
       - uses: actions/checkout@v4
 
