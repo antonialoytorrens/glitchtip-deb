@@ -323,31 +323,9 @@ ensure_postgres_from_dbconfig() {
   echo ">>> PostgreSQL role/database ready (${dbc_dbname})."
 }
 
-# #region agent log
-_debug_log() {
-  python3 -c "
-import json, time, os
-payload = {
-    'sessionId': '7268f9',
-    'hypothesisId': os.environ.get('_DBG_HID', 'H0'),
-    'location': os.environ.get('_DBG_LOC', 'postinst'),
-    'message': os.environ.get('_DBG_MSG', ''),
-    'data': json.loads(os.environ.get('_DBG_DATA', '{}')),
-    'timestamp': int(time.time() * 1000),
-}
-open('/home/antonialoy/Seafile/Ikaue/CodeProjects/packaging/glitchtip-deb/.cursor/debug-7268f9.log', 'a').write(json.dumps(payload) + '\n')
-" 2>/dev/null || true
-}
-# #endregion
-
 if [ -f /etc/dbconfig-common/glitchtip.conf ]; then
   write_db_env_from_dbconfig
   ensure_postgres_from_dbconfig
-  # #region agent log
-  _DBG_HID=H1 _DBG_LOC=postinst:dbconfig _DBG_MSG=env_written \
-    _DBG_DATA="$(python3 -c "import re; t=open('${ENV_FILE}').read(); print(__import__('json').dumps({k.split('=')[0]:k.split('=')[1] for k in t.splitlines() if k.startswith('DATABASE_') and 'PASSWORD' not in k}))")" \
-    _debug_log
-  # #endregion
 else
   echo ">>> dbconfig-no-thanks: setting up PostgreSQL locally."
   DB_NAME="__DB_NAME__"
@@ -393,23 +371,10 @@ fi
 
 echo ">>> Verifying database connection..."
 run_as_glitchtip "${VENV}/bin/python" -c "
-import os, json, time
+import os
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'glitchtip.settings')
 import django
 django.setup()
-from django.conf import settings
-db = settings.DATABASES['default']
-# #region agent log
-log = {
-    'sessionId': '7268f9',
-    'hypothesisId': 'H2',
-    'location': 'postinst:verify_db',
-    'message': 'django_databases_default',
-    'data': {k: db.get(k) for k in ('NAME', 'USER', 'HOST', 'PORT', 'ENGINE') if k in db},
-    'timestamp': int(time.time() * 1000),
-}
-open('/home/antonialoy/Seafile/Ikaue/CodeProjects/packaging/glitchtip-deb/.cursor/debug-7268f9.log', 'a').write(json.dumps(log) + '\n')
-# #endregion
 from django.db import connection
 connection.ensure_connection()
 print('>>> Database connection OK.')
