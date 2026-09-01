@@ -33,5 +33,10 @@ RUN apt-get update -qq \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* /tmp/pacstall /var/cache/apt/archives/*
 
+RUN pkg="$(ls /build/glitchtip_*.deb)" \
+  && dpkg-deb -c "${pkg}" | grep -q 'opt/glitchtip/venv/lib/python' \
+  && dpkg-deb -x "${pkg}" /tmp/verify \
+  && /tmp/verify/opt/glitchtip/venv/bin/python -c "import django; print('django', django.__version__)"
+
 FROM scratch AS artifact
 COPY --from=builder /build/*.deb /
