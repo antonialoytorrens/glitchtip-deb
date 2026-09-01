@@ -17,7 +17,7 @@
 #   GLITCHTIP_DB_NAME            (default: glitchtip)
 #   GLITCHTIP_DB_USER            (default: glitchtip)
 #   GLITCHTIP_DB_HOST            (default: 127.0.0.1)
-#   PKG_REVISION                 (default: 1)
+#   PKG_REVISION                 (default: 2)
 #   INSTALL_PREFIX               (default: /opt/glitchtip)
 #   KEEP_CHROOT                  (default: true — chroot mode only)
 #   DISABLE_DEBOOTSTRAP_CHROOT   (default: false — set true to build on host)
@@ -25,6 +25,7 @@
 #
 # Trimmed dependency profile (local PostgreSQL + filesystem; see README):
 #   - patches/0001-trim-optional-deps.patch removes optional deps (DuckDB, MCP, cloud storage, uWSGI, …)
+#   - patches/0002-local-filesystem-profile.patch adjusts settings.py (storages, STATIC_ROOT, …)
 #   - GLITCHTIP_ENABLE_DUCKDB=false and GLITCHTIP_ENABLE_MCP=false in glitchtip.env
 #
 # Example:
@@ -42,7 +43,7 @@ if [ -z "${GLITCHTIP_VERSION:-}" ] && [ -f "${VERSION_FILE}" ]; then
 fi
 GLITCHTIP_VERSION="${GLITCHTIP_VERSION:-6.2.6}"
 
-PKG_REVISION="${PKG_REVISION:-1}"
+PKG_REVISION="${PKG_REVISION:-2}"
 KEEP_CHROOT="${KEEP_CHROOT:-true}"
 DISABLE_DEBOOTSTRAP_CHROOT="${DISABLE_DEBOOTSTRAP_CHROOT:-false}"
 FETCH_SOURCES="${FETCH_SOURCES:-false}"

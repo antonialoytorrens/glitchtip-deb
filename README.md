@@ -8,7 +8,7 @@ Experimental `.deb` packaging for [GlitchTip](https://glitchtip.com/). This does
 
 ```bash
 sudo ./build-glitchtip-amd64-deb.sh
-sudo dpkg -i glitchtip_$(cat VERSION)-1_amd64.deb
+sudo dpkg -i glitchtip_$(cat VERSION)-2_amd64.deb
 sudo apt-get install -f
 ```
 
@@ -32,6 +32,7 @@ FETCH_SOURCES=true sudo -E ./build-glitchtip-amd64-deb.sh
 | `DISABLE_DEBOOTSTRAP_CHROOT` | `false` | `true` = build on host (CI uses this) |
 | `KEEP_CHROOT` | `true` | Keep debootstrap chroot after build |
 | `FETCH_SOURCES` | `false` | Re-download GitLab tag archives |
+| `PKG_REVISION` | `2` | Debian package revision (`glitchtip_VERSION-REV_amd64.deb`) |
 
 ## CI
 
@@ -59,9 +60,12 @@ VERSION=6.2.7 ./scripts/check-glitchtip-version.sh
 
 ## Patches and trimmed profile
 
-Before building the Python venv, [`patches/0001-trim-optional-deps.patch`](patches/0001-trim-optional-deps.patch) is applied to upstream `pyproject.toml`. This package targets **local PostgreSQL + filesystem storage** and omits optional upstream dependencies to save disk space and build time.
+Before building the Python venv, patches under [`patches/`](patches/) are applied to the upstream backend checkout. This package targets **local PostgreSQL + filesystem storage** and omits optional upstream dependencies to save disk space and build time.
 
-Removed or changed dependencies: `duckdb`, `mcp`, `uWSGI`, `uwsgi-chunked`, `google-cloud-logging`, `django-storages` (+ boto3/azure/gcs), `arro3-core`, `arro3-io`; `granian[reload,uvloop]` → `granian[uvloop]`.
+- [`patches/0001-trim-optional-deps.patch`](patches/0001-trim-optional-deps.patch) — trims `pyproject.toml` (drops DuckDB, MCP, cloud storage, uWSGI, …).
+- [`patches/0002-local-filesystem-profile.patch`](patches/0002-local-filesystem-profile.patch) — adjusts `glitchtip/settings.py` for the trimmed profile: removes the `storages` app from `INSTALLED_APPS`, blocks S3 at startup, and sets `STATIC_ROOT` / `STATICFILES_DIRS` for local paths (configurable via `MEDIA_ROOT` and `STATIC_ROOT` in `/etc/glitchtip/glitchtip.env`).
+
+Removed or changed dependencies (0001): `duckdb`, `mcp`, `uWSGI`, `uwsgi-chunked`, `google-cloud-logging`, `django-storages` (+ boto3/azure/gcs), `arro3-core`, `arro3-io`; `granian[reload,uvloop]` → `granian[uvloop]`.
 
 ### Disabled or unavailable features
 

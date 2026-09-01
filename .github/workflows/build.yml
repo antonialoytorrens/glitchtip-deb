@@ -30,7 +30,8 @@ jobs:
 
       - name: Verify .deb venv
         run: |
-          PKG="glitchtip_$(tr -d '[:space:]' < VERSION)-1_amd64.deb"
+          REV="${PKG_REVISION:-2}"
+          PKG="glitchtip_$(tr -d '[:space:]' < VERSION)-${REV}_amd64.deb"
           test -f "${PKG}"
           dpkg-deb -c "${PKG}" | grep -q 'opt/glitchtip/venv/lib/python'
           dpkg-deb -x "${PKG}" /tmp/extract

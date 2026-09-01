@@ -132,6 +132,8 @@ CSRF_TRUSTED_ORIGINS=https://${GLITCHTIP_DOMAIN}
 GLITCHTIP_VERSION=${GLITCHTIP_VERSION}
 GLITCHTIP_ENABLE_DUCKDB=false
 GLITCHTIP_ENABLE_MCP=false
+MEDIA_ROOT=/var/lib/glitchtip/uploads
+STATIC_ROOT=/var/lib/glitchtip/static
 DJANGO_SETTINGS_MODULE=glitchtip.settings
 LOG_LEVEL=WARNING
 ENVFILE
@@ -217,9 +219,10 @@ run_as_glitchtip() {
     # shellcheck disable=SC1090
     source "$1"
     set +a
-    shift
+    cd "$2" || exit 1
+    shift 2
     exec "$@"
-  ' bash "${ENV_FILE}" "$@"
+  ' bash "${ENV_FILE}" "${SRC}" "$@"
 }
 
 if grep -q '__SECRETKEY_PLACEHOLDER__' "${ENV_FILE}"; then
