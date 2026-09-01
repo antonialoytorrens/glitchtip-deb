@@ -124,7 +124,6 @@ echo "    Backend source: $(du -sh "${BUILD_ROOT}${SRC_DIR}" | cut -f1)"
 mkdir -p "${BUILD_ROOT}/etc/glitchtip"
 cat > "${BUILD_ROOT}/etc/glitchtip/glitchtip.env" << ENVFILE
 SECRET_KEY=__SECRETKEY_PLACEHOLDER__
-DATABASE_URL=postgres://${GLITCHTIP_DB_USER}:__DBPASS_PLACEHOLDER__@${GLITCHTIP_DB_HOST}:5432/${GLITCHTIP_DB_NAME}
 EMAIL_URL=consolemail://
 DEFAULT_FROM_EMAIL=noreply@${GLITCHTIP_DOMAIN}
 GLITCHTIP_DOMAIN=https://${GLITCHTIP_DOMAIN}
@@ -231,9 +230,9 @@ SRC="/opt/glitchtip/src"
 VENV="/opt/glitchtip/venv"
 ENV_FILE="/etc/glitchtip/glitchtip.env"
 
-if [ -f /usr/share/dbconfig-common/dpkg/postinst ]; then
+if [ -f /usr/share/dbconfig-common/dpkg/postinst.pgsql ]; then
   . /usr/share/debconf/confmodule
-  . /usr/share/dbconfig-common/dpkg/postinst
+  . /usr/share/dbconfig-common/dpkg/postinst.pgsql
   dbc_go glitchtip "$@"
 fi
 
@@ -274,32 +273,48 @@ if ! systemctl is-active --quiet postgresql; then
   exit 1
 fi
 
-if [ -f /etc/dbconfig-common/glitchtip.conf ]; then
+write_db_env_from_dbconfig() {
   # shellcheck disable=SC1091
   . /etc/dbconfig-common/glitchtip.conf
-  sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgres://${dbc_dbuser}:${dbc_dbpass}@${dbc_dbserver}/${dbc_dbname}|" "${ENV_FILE}"
-  echo ">>> DATABASE_URL updated from dbconfig."
+  grep -vE '^(DATABASE_NAME|DATABASE_USER|DATABASE_PASSWORD|DATABASE_HOST|DATABASE_PORT)=' \
+    "${ENV_FILE}" > "${ENV_FILE}.tmp"
+  {
+    cat "${ENV_FILE}.tmp"
+    echo "DATABASE_NAME=${dbc_dbname}"
+    echo "DATABASE_USER=${dbc_dbuser}"
+    case "${dbc_authmethod_user}:${dbc_dbserver:-local}" in
+      ident:local|ident:|ident:localhost|ident:127.0.0.1)
+        ;;
+      *)
+        echo "DATABASE_PASSWORD=${dbc_dbpass}"
+        echo "DATABASE_HOST=${dbc_dbserver:-127.0.0.1}"
+        echo "DATABASE_PORT=${dbc_dbport:-5432}"
+        ;;
+    esac
+  } > "${ENV_FILE}"
+  rm -f "${ENV_FILE}.tmp"
+  echo ">>> Database env updated from dbconfig."
+}
+
+if [ -f /etc/dbconfig-common/glitchtip.conf ]; then
+  write_db_env_from_dbconfig
 else
-  echo ">>> dbconfig-no-thanks or manual DB: setting up PostgreSQL locally."
-  if grep -q '__DBPASS_PLACEHOLDER__' "${ENV_FILE}"; then
-    DB_PASS=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
-    sed -i "s|__DBPASS_PLACEHOLDER__|${DB_PASS}|" "${ENV_FILE}"
-    echo ">>> Generated database password."
-  else
-    DB_PASS=$(python3 -c "
-import re
-m = re.search(r'postgres://[^:]+:([^@]+)@', open('${ENV_FILE}').read())
-print(m.group(1) if m else '')
-")
-  fi
-
-  DB_NAME=$(grep '^DATABASE_URL=' "${ENV_FILE}" | sed -n 's|.*/\([^/?]*\).*|\1|p')
-  DB_USER=$(grep '^DATABASE_URL=' "${ENV_FILE}" | sed -n 's|^DATABASE_URL=postgres://\([^:]*\):.*|\1|p')
-
-  if [ -z "${DB_USER}" ] || [[ "${DB_USER}" == *"="* ]]; then
-    echo "!!! Could not parse database user from DATABASE_URL in ${ENV_FILE}" >&2
-    exit 1
-  fi
+  echo ">>> dbconfig-no-thanks: setting up PostgreSQL locally."
+  DB_NAME="__DB_NAME__"
+  DB_USER="__DB_USER__"
+  DB_HOST="__DB_HOST__"
+  DB_PASS=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+  grep -vE '^(DATABASE_NAME|DATABASE_USER|DATABASE_PASSWORD|DATABASE_HOST|DATABASE_PORT)=' \
+    "${ENV_FILE}" > "${ENV_FILE}.tmp"
+  {
+    cat "${ENV_FILE}.tmp"
+    echo "DATABASE_NAME=${DB_NAME}"
+    echo "DATABASE_USER=${DB_USER}"
+    echo "DATABASE_PASSWORD=${DB_PASS}"
+    echo "DATABASE_HOST=${DB_HOST}"
+    echo "DATABASE_PORT=5432"
+  } > "${ENV_FILE}"
+  rm -f "${ENV_FILE}.tmp"
 
   if runuser -u postgres -- psql -tc \
     "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1; then
@@ -325,6 +340,17 @@ if ! systemctl is-active --quiet valkey-server; then
   echo "!!! valkey-server is not running. Worker requires Valkey on 127.0.0.1:6379." >&2
   exit 1
 fi
+
+echo ">>> Verifying database connection..."
+run_as_glitchtip "${VENV}/bin/python" -c "
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'glitchtip.settings')
+import django
+django.setup()
+from django.db import connection
+connection.ensure_connection()
+print('>>> Database connection OK.')
+"
 
 echo ">>> Running migrations..."
 run_as_glitchtip "${VENV}/bin/python" "${SRC}/manage.py" migrate --no-input
@@ -352,14 +378,19 @@ echo ">>> Set a real EMAIL_URL in ${ENV_FILE} for outbound mail."
 POSTINST
 
 sed -i "s|__HTTP_PORT__|${GLITCHTIP_HTTP_PORT}|g" "${AFTER_INSTALL}"
+sed -i \
+  -e "s|__DB_NAME__|${GLITCHTIP_DB_NAME}|g" \
+  -e "s|__DB_USER__|${GLITCHTIP_DB_USER}|g" \
+  -e "s|__DB_HOST__|${GLITCHTIP_DB_HOST}|g" \
+  "${AFTER_INSTALL}"
 
 BEFORE_REMOVE=$(mktemp)
 cat > "${BEFORE_REMOVE}" << 'PRERM'
 #!/bin/bash
 set -e
-if [ -f /usr/share/dbconfig-common/dpkg/prerm ]; then
+if [ -f /usr/share/dbconfig-common/dpkg/prerm.pgsql ]; then
   . /usr/share/debconf/confmodule
-  . /usr/share/dbconfig-common/dpkg/prerm
+  . /usr/share/dbconfig-common/dpkg/prerm.pgsql
   dbc_go glitchtip "$@"
 fi
 systemctl stop glitchtip glitchtip-worker 2>/dev/null || true
@@ -374,8 +405,8 @@ case "$1" in
   remove|purge)
     if [ -f /var/lib/dbconfig-common/config/glitchtip ]; then
       . /usr/share/debconf/confmodule
-      if [ -f /usr/share/dbconfig-common/dpkg/postrm ]; then
-        . /usr/share/dbconfig-common/dpkg/postrm
+      if [ -f /usr/share/dbconfig-common/dpkg/postrm.pgsql ]; then
+        . /usr/share/dbconfig-common/dpkg/postrm.pgsql
         dbc_go glitchtip "$@" || true
       fi
     fi

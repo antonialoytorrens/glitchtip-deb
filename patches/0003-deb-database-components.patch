@@ -1,0 +1,20 @@
+--- a/glitchtip/settings.py
++++ b/glitchtip/settings.py
+@@ -890,17 +890,6 @@
+ 
+ MAINTENANCE_DATABASE_ALIAS = "maintenance" if "maintenance" in DATABASES else "default"
+ 
+-# If component variables like DATABASE_HOST are provided, update the base config
+-if env.str("DATABASE_HOST", None):
+-    DATABASES["default"].update(
+-        {
+-            "NAME": env.str("DATABASE_NAME", "postgres"),
+-            "USER": env.str("DATABASE_USER", "postgres"),
+-            "PASSWORD": env.str("DATABASE_PASSWORD"),
+-            "HOST": env.str("DATABASE_HOST"),
+-            "PORT": env.str("DATABASE_PORT", "5432"),
+-        }
+-    )
+ # Database engine. gt_rust.django_backend is the only supported engine: the
+ # ORM (sync + async) runs on the Rust Postgres driver — one shared tokio pool
+ # on the same runtime as the valkey driver. psycopg remains installed as a

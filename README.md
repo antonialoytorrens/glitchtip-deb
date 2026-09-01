@@ -65,6 +65,7 @@ Before building the Python venv, patches under [`patches/`](patches/) are applie
 
 - [`patches/0001-trim-optional-deps.patch`](patches/0001-trim-optional-deps.patch) — trims `pyproject.toml` (drops DuckDB, MCP, cloud storage, uWSGI, …).
 - [`patches/0002-local-filesystem-profile.patch`](patches/0002-local-filesystem-profile.patch) — adjusts `glitchtip/settings.py` for the trimmed profile: removes the `storages` app from `INSTALLED_APPS`, blocks S3 at startup, and sets `STATIC_ROOT` / `STATICFILES_DIRS` for local paths (configurable via `MEDIA_ROOT` and `STATIC_ROOT` in `/etc/glitchtip/glitchtip.env`).
+- [`patches/0003-deb-database-components.patch`](patches/0003-deb-database-components.patch) — reads PostgreSQL settings from `DATABASE_NAME` / `DATABASE_USER` (and optional `DATABASE_HOST` / `DATABASE_PASSWORD`) written by dbconfig-pgsql; no `DATABASE_URL`.
 
 Removed or changed dependencies (0001): `duckdb`, `mcp`, `uWSGI`, `uwsgi-chunked`, `google-cloud-logging`, `django-storages` (+ boto3/azure/gcs), `arro3-core`, `arro3-io`; `granian[reload,uvloop]` → `granian[uvloop]`.
 
@@ -89,3 +90,15 @@ These GlitchTip capabilities are **not shipped** in this `.deb` (removing the Py
 - Native symbolication (`symbolic`), minidumps, Rust ingest (`glitchtip-rust`)
 
 Valkey is **required** at runtime: the `.deb` depends on `valkey-server` and ships `VALKEY_URL=redis://127.0.0.1:6379/0` in `/etc/glitchtip/glitchtip.env`.
+
+### Database (dbconfig-pgsql)
+
+The package depends on `dbconfig-pgsql | dbconfig-no-thanks`. On install with dbconfig-pgsql, dbconfig writes `/etc/dbconfig-common/glitchtip.conf`; the postinst copies settings into `/etc/glitchtip/glitchtip.env`:
+
+- **ident + local socket** (typical Debian setup): `DATABASE_NAME` and `DATABASE_USER` only — no password, no host. GlitchTip connects via unix socket as the `glitchtip` system user.
+- **password auth** (remote or explicit password): also sets `DATABASE_PASSWORD`, `DATABASE_HOST`, and `DATABASE_PORT`.
+- **dbconfig-no-thanks**: creates a local PostgreSQL role/database with a generated password and writes `DATABASE_*` TCP settings into `glitchtip.env`.
+
+There is no upgrade path from older installs — purge and reinstall.
+
+Reconfigure after changing database settings: `sudo dpkg-reconfigure glitchtip`.
