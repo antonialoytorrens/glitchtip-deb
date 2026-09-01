@@ -96,8 +96,8 @@ echo ">>> Creating virtualenv and installing Python dependencies (uv sync)..."
 mkdir -p "${BUILD_ROOT}${VENV_DIR}"
 python3 -m venv "${BUILD_ROOT}${VENV_DIR}"
 export UV_PROJECT_ENVIRONMENT="${BUILD_ROOT}${VENV_DIR}"
-if ! grep -q '"duckdb' "${BUILD_ROOT}${SRC_DIR}/pyproject.toml"; then
-  echo ">>> Refreshing uv.lock (duckdb not in dependencies)..."
+if [ -n "$(find "${OUTPUT_DIR}/patches" -maxdepth 1 -name '*.patch' -print -quit 2>/dev/null)" ]; then
+  echo ">>> Refreshing uv.lock (patches may have changed dependencies)..."
   (cd "${BUILD_ROOT}${SRC_DIR}" && "${UV_BIN}" lock)
 fi
 (
@@ -131,6 +131,7 @@ ALLOWED_HOSTS=${GLITCHTIP_DOMAIN}
 CSRF_TRUSTED_ORIGINS=https://${GLITCHTIP_DOMAIN}
 GLITCHTIP_VERSION=${GLITCHTIP_VERSION}
 GLITCHTIP_ENABLE_DUCKDB=false
+GLITCHTIP_ENABLE_MCP=false
 DJANGO_SETTINGS_MODULE=glitchtip.settings
 LOG_LEVEL=WARNING
 ENVFILE

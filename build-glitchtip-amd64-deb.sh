@@ -23,9 +23,9 @@
 #   DISABLE_DEBOOTSTRAP_CHROOT   (default: false — set true to build on host)
 #   FETCH_SOURCES                (default: false — force re-download of tags)
 #
-# Cold storage (DuckDB) is disabled by default (PostgreSQL-only deployments):
-#   - patches/0001-drop-duckdb-dependency.patch removes duckdb from pyproject.toml
-#   - GLITCHTIP_ENABLE_DUCKDB=false in the shipped /etc/glitchtip/glitchtip.env
+# Trimmed dependency profile (local PostgreSQL + filesystem; see README):
+#   - patches/0001-trim-optional-deps.patch removes optional deps (DuckDB, MCP, cloud storage, uWSGI, …)
+#   - GLITCHTIP_ENABLE_DUCKDB=false and GLITCHTIP_ENABLE_MCP=false in glitchtip.env
 #
 # Example:
 #   GLITCHTIP_DOMAIN=errors.acme.org sudo -E ./build-glitchtip-amd64-deb.sh
