@@ -41,8 +41,8 @@ fetch_tree() {
     return 0
   fi
 
-  if ! command -v curl &>/dev/null || ! command -v tar &>/dev/null; then
-    echo "!!! curl and tar are required to download sources"
+  if ! command -v curl &>/dev/null || ! command -v tar &>/dev/null || ! command -v gzip &>/dev/null; then
+    echo "!!! curl and tar and gzip are required to download sources"
     exit 1
   fi
 
