@@ -58,10 +58,19 @@ GLITCHTIP_DB_USER="${GLITCHTIP_DB_USER:-glitchtip}"
 GLITCHTIP_DB_HOST="${GLITCHTIP_DB_HOST:-127.0.0.1}"
 
 DESCRIPTION="GlitchTip ${GLITCHTIP_VERSION} for ${GLITCHTIP_DOMAIN} (bundled venv)"
-CHROOT_DIR="${CHROOT_BASE:-/home/$(whoami)/glitchtip-build-$(head -c6 /dev/urandom | xxd -p)}"
 DEB_FILE="${PKG_NAME}_${GLITCHTIP_VERSION}-${PKG_REVISION}_${ARCH}.deb"
 INNER_SCRIPT="${SCRIPT_DIR}/scripts/build-glitchtip-inner.sh"
 FETCH_SCRIPT="${SCRIPT_DIR}/scripts/fetch-glitchtip-sources.sh"
+
+_chroot_random_id() {
+  if command -v xxd &>/dev/null; then
+    head -c6 /dev/urandom | xxd -p
+  else
+    od -An -tx1 -N6 /dev/urandom | tr -d ' \n'
+  fi
+}
+
+CHROOT_DIR=""
 
 CHROOT_ACTIVE=false
 
@@ -112,6 +121,7 @@ if [ "${DISABLE_DEBOOTSTRAP_CHROOT}" = "true" ]; then
   export_build_env "${BUILD_DIR}"
   bash "${INNER_SCRIPT}"
 else
+  CHROOT_DIR="${CHROOT_BASE:-/home/$(whoami)/glitchtip-build-$(_chroot_random_id)}"
   if ! command -v debootstrap &>/dev/null; then
     apt-get update -qq && apt-get install -y -qq debootstrap
   fi
