@@ -37,6 +37,8 @@ FETCH_SOURCES=true sudo -E ./build-glitchtip-amd64-deb.sh
 
 GitHub Actions workflow [`.github/workflows/build.yml`](.github/workflows/build.yml) runs on push to `master` only (no PR builds).
 
+The build job runs inside a **`debian:trixie` container** with `DISABLE_DEBOOTSTRAP_CHROOT=true`, so the embedded venv uses the same Debian Python as the target host (not Ubuntu’s `setup-python`).
+
 Each successful run publishes a GitHub **pre-release** tagged `v{VERSION}-pre.{run}` with the `.deb` and its `.sha256` checksum file attached (e.g. `v6.2.6-pre.42`).
 
 ## Version monitoring
