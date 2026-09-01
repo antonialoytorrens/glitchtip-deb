@@ -8,7 +8,7 @@ Experimental `.deb` packaging for [GlitchTip](https://glitchtip.com/). This does
 
 ```bash
 sudo ./build-glitchtip-amd64-deb.sh
-sudo dpkg -i glitchtip_$(cat VERSION)-2_amd64.deb
+sudo dpkg -i glitchtip_$(cat VERSION)-3_amd64.deb
 sudo apt-get install -f
 ```
 
@@ -29,10 +29,11 @@ FETCH_SOURCES=true sudo -E ./build-glitchtip-amd64-deb.sh
 |----------|---------|-------------|
 | `GLITCHTIP_VERSION` | `VERSION` file | GlitchTip release to package |
 | `GLITCHTIP_DOMAIN` | `glitchtip.antonialoytorrens.com` | Hostname baked into config |
+| `GLITCHTIP_HTTP_PORT` | `38417` | Granian listen port on `127.0.0.1` (proxy from nginx/apache) |
 | `DISABLE_DEBOOTSTRAP_CHROOT` | `false` | `true` = build on host (CI uses this) |
 | `KEEP_CHROOT` | `true` | Keep debootstrap chroot after build |
 | `FETCH_SOURCES` | `false` | Re-download GitLab tag archives |
-| `PKG_REVISION` | `2` | Debian package revision (`glitchtip_VERSION-REV_amd64.deb`) |
+| `PKG_REVISION` | `3` | Debian package revision (`glitchtip_VERSION-REV_amd64.deb`) |
 
 ## CI
 
@@ -87,4 +88,4 @@ These GlitchTip capabilities are **not shipped** in this `.deb` (removing the Py
 - **Uptime monitoring** — `GLITCHTIP_ENABLE_UPTIME` defaults to upstream `true`
 - Native symbolication (`symbolic`), minidumps, Rust ingest (`glitchtip-rust`)
 
-Valkey/Redis remains **optional** at runtime (empty `VALKEY_URL` uses the database task backend).
+Valkey is **required** at runtime: the `.deb` depends on `valkey-server` and ships `VALKEY_URL=redis://127.0.0.1:6379/0` in `/etc/glitchtip/glitchtip.env`.

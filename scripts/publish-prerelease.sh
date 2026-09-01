@@ -4,7 +4,7 @@ set -euo pipefail
 : "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
 
 VERSION="$(tr -d '[:space:]' < VERSION)"
-PKG_REVISION="${PKG_REVISION:-2}"
+PKG_REVISION="${PKG_REVISION:-3}"
 TIMESTAMP="$(date -u +%Y%m%d%H%M%S)"
 PKG="glitchtip_${VERSION}-${PKG_REVISION}_amd64.deb"
 CHECKSUM_FILE="${PKG}.sha256"

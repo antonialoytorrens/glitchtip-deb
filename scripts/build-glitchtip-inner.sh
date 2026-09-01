@@ -4,7 +4,7 @@
 #
 # Required environment (set by build-glitchtip-amd64-deb.sh):
 #   OUTPUT_DIR, GLITCHTIP_VERSION, GLITCHTIP_DOMAIN, GLITCHTIP_DB_*,
-#   SRC_DIR, VENV_DIR, PKG_NAME, PKG_REVISION, ARCH, DESCRIPTION, DEB_FILE
+#   GLITCHTIP_HTTP_PORT, SRC_DIR, VENV_DIR, PKG_NAME, PKG_REVISION, ...
 #
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
@@ -15,6 +15,7 @@ export DEBIAN_FRONTEND=noninteractive
 : "${GLITCHTIP_DB_NAME:?GLITCHTIP_DB_NAME is required}"
 : "${GLITCHTIP_DB_USER:?GLITCHTIP_DB_USER is required}"
 : "${GLITCHTIP_DB_HOST:?GLITCHTIP_DB_HOST is required}"
+: "${GLITCHTIP_HTTP_PORT:?GLITCHTIP_HTTP_PORT is required}"
 : "${SRC_DIR:?SRC_DIR is required}"
 : "${VENV_DIR:?VENV_DIR is required}"
 : "${PKG_NAME:?PKG_NAME is required}"
@@ -134,6 +135,8 @@ GLITCHTIP_ENABLE_DUCKDB=false
 GLITCHTIP_ENABLE_MCP=false
 MEDIA_ROOT=/var/lib/glitchtip/uploads
 STATIC_ROOT=/var/lib/glitchtip/static
+VALKEY_URL=redis://127.0.0.1:6379/0
+GLITCHTIP_HTTP_PORT=${GLITCHTIP_HTTP_PORT}
 DJANGO_SETTINGS_MODULE=glitchtip.settings
 LOG_LEVEL=WARNING
 ENVFILE
@@ -143,8 +146,8 @@ mkdir -p "${BUILD_ROOT}/etc/systemd/system"
 cat > "${BUILD_ROOT}/etc/systemd/system/glitchtip.service" << 'SVCWEB'
 [Unit]
 Description=GlitchTip web server (granian)
-After=network.target postgresql.service
-Wants=postgresql.service
+After=network.target postgresql.service valkey-server.service
+Wants=postgresql.service valkey-server.service
 
 [Service]
 Type=simple
@@ -152,13 +155,13 @@ User=glitchtip
 Group=glitchtip
 EnvironmentFile=/etc/glitchtip/glitchtip.env
 WorkingDirectory=/opt/glitchtip/src
-ExecStart=/opt/glitchtip/venv/bin/granian \
+ExecStart=/bin/bash -c 'exec /opt/glitchtip/venv/bin/granian \
   --interface asginl \
   glitchtip.asgi:application \
   --host 127.0.0.1 \
-  --port 8002 \
+  --port "${GLITCHTIP_HTTP_PORT}" \
   --workers 1 \
-  --no-ws
+  --no-ws'
 Restart=on-failure
 RestartSec=5
 PrivateTmp=true
@@ -171,8 +174,8 @@ SVCWEB
 cat > "${BUILD_ROOT}/etc/systemd/system/glitchtip-worker.service" << 'SVCWORKER'
 [Unit]
 Description=GlitchTip background worker
-After=network.target postgresql.service glitchtip.service
-Wants=postgresql.service
+After=network.target postgresql.service valkey-server.service glitchtip.service
+Wants=postgresql.service valkey-server.service
 
 [Service]
 Type=simple
@@ -254,24 +257,30 @@ fi
 chmod 640 "${ENV_FILE}"
 chown root:glitchtip "${ENV_FILE}"
 
-if systemctl is-active --quiet postgresql; then
-  if runuser -u postgres -- psql -tc \
-    "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1; then
-    runuser -u postgres -- psql -c \
-      "ALTER ROLE ${DB_USER} WITH PASSWORD '${DB_PASS}';" 2>/dev/null || true
-  else
-    runuser -u postgres -- psql -c \
-      "CREATE ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';"
-  fi
-  echo ">>> PostgreSQL role '${DB_USER}' ready."
+if ! systemctl is-active --quiet postgresql; then
+  echo "!!! postgresql is not running. Database setup and migrations require PostgreSQL." >&2
+  exit 1
+fi
 
-  runuser -u postgres -- psql -tc \
-    "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" \
-    | grep -q 1 \
-    || runuser -u postgres -- createdb -O "${DB_USER}" "${DB_NAME}"
-  echo ">>> PostgreSQL database '${DB_NAME}' ready."
+if runuser -u postgres -- psql -tc \
+  "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1; then
+  runuser -u postgres -- psql -c \
+    "ALTER ROLE ${DB_USER} WITH PASSWORD '${DB_PASS}';" 2>/dev/null || true
 else
-  echo "!!! PostgreSQL is not running. Create the database manually."
+  runuser -u postgres -- psql -c \
+    "CREATE ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';"
+fi
+echo ">>> PostgreSQL role '${DB_USER}' ready."
+
+runuser -u postgres -- psql -tc \
+  "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" \
+  | grep -q 1 \
+  || runuser -u postgres -- createdb -O "${DB_USER}" "${DB_NAME}"
+echo ">>> PostgreSQL database '${DB_NAME}' ready."
+
+if ! systemctl is-active --quiet valkey-server; then
+  echo "!!! valkey-server is not running. Worker requires Valkey on 127.0.0.1:6379." >&2
+  exit 1
 fi
 
 echo ">>> Running migrations..."
@@ -295,9 +304,11 @@ systemctl enable --now glitchtip glitchtip-worker
 echo ">>> Services glitchtip and glitchtip-worker enabled."
 echo ""
 echo ">>> GlitchTip is ready at the URL configured in ${ENV_FILE}"
-echo ">>> Configure nginx/apache to proxy https://YOUR_DOMAIN/ to http://127.0.0.1:8002"
+echo ">>> Configure nginx/apache to proxy https://YOUR_DOMAIN/ to http://127.0.0.1:__HTTP_PORT__"
 echo ">>> Set a real EMAIL_URL in ${ENV_FILE} for outbound mail."
 POSTINST
+
+sed -i "s|__HTTP_PORT__|${GLITCHTIP_HTTP_PORT}|g" "${AFTER_INSTALL}"
 
 BEFORE_REMOVE=$(mktemp)
 cat > "${BEFORE_REMOVE}" << 'PRERM'
@@ -325,7 +336,8 @@ fpm \
   --depends "libpq5" \
   --depends "libxml2" \
   --depends "postgresql" \
-  --deb-suggests "valkey-server, nginx" \
+  --depends "valkey-server" \
+  --deb-suggests "nginx" \
   --config-files /etc/glitchtip/glitchtip.env \
   --after-install "${AFTER_INSTALL}" \
   --before-remove "${BEFORE_REMOVE}" \

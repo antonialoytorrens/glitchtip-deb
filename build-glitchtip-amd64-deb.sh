@@ -17,7 +17,8 @@
 #   GLITCHTIP_DB_NAME            (default: glitchtip)
 #   GLITCHTIP_DB_USER            (default: glitchtip)
 #   GLITCHTIP_DB_HOST            (default: 127.0.0.1)
-#   PKG_REVISION                 (default: 2)
+#   GLITCHTIP_HTTP_PORT          (default: 38417)
+#   PKG_REVISION                 (default: 3)
 #   INSTALL_PREFIX               (default: /opt/glitchtip)
 #   KEEP_CHROOT                  (default: true — chroot mode only)
 #   DISABLE_DEBOOTSTRAP_CHROOT   (default: false — set true to build on host)
@@ -43,7 +44,7 @@ if [ -z "${GLITCHTIP_VERSION:-}" ] && [ -f "${VERSION_FILE}" ]; then
 fi
 GLITCHTIP_VERSION="${GLITCHTIP_VERSION:-6.2.6}"
 
-PKG_REVISION="${PKG_REVISION:-2}"
+PKG_REVISION="${PKG_REVISION:-3}"
 KEEP_CHROOT="${KEEP_CHROOT:-true}"
 DISABLE_DEBOOTSTRAP_CHROOT="${DISABLE_DEBOOTSTRAP_CHROOT:-false}"
 FETCH_SOURCES="${FETCH_SOURCES:-false}"
@@ -57,6 +58,7 @@ GLITCHTIP_DOMAIN="${GLITCHTIP_DOMAIN:-glitchtip.antonialoytorrens.com}"
 GLITCHTIP_DB_NAME="${GLITCHTIP_DB_NAME:-glitchtip}"
 GLITCHTIP_DB_USER="${GLITCHTIP_DB_USER:-glitchtip}"
 GLITCHTIP_DB_HOST="${GLITCHTIP_DB_HOST:-127.0.0.1}"
+GLITCHTIP_HTTP_PORT="${GLITCHTIP_HTTP_PORT:-38417}"
 
 DESCRIPTION="GlitchTip ${GLITCHTIP_VERSION} for ${GLITCHTIP_DOMAIN} (bundled venv)"
 DEB_FILE="${PKG_NAME}_${GLITCHTIP_VERSION}-${PKG_REVISION}_${ARCH}.deb"
@@ -78,7 +80,7 @@ CHROOT_ACTIVE=false
 export_build_env() {
   export OUTPUT_DIR="$1"
   export GLITCHTIP_VERSION GLITCHTIP_DOMAIN
-  export GLITCHTIP_DB_NAME GLITCHTIP_DB_USER GLITCHTIP_DB_HOST
+  export GLITCHTIP_DB_NAME GLITCHTIP_DB_USER GLITCHTIP_DB_HOST GLITCHTIP_HTTP_PORT
   export SRC_DIR VENV_DIR PKG_NAME PKG_REVISION ARCH DESCRIPTION DEB_FILE
 }
 
@@ -104,6 +106,7 @@ trap cleanup EXIT INT TERM
 echo "Building GlitchTip ${GLITCHTIP_VERSION} for ${ARCH}"
 echo "  Domain:   ${GLITCHTIP_DOMAIN}"
 echo "  DB:       ${GLITCHTIP_DB_USER}@${GLITCHTIP_DB_HOST}/${GLITCHTIP_DB_NAME}"
+echo "  HTTP:     127.0.0.1:${GLITCHTIP_HTTP_PORT}"
 echo "  Sources:  ${BUILD_DIR}"
 echo "  Chroot:   $([ "${DISABLE_DEBOOTSTRAP_CHROOT}" = "true" ] && echo disabled || echo "${CHROOT_DIR}")"
 echo ""
@@ -151,6 +154,7 @@ else
     GLITCHTIP_DB_NAME="${GLITCHTIP_DB_NAME}" \
     GLITCHTIP_DB_USER="${GLITCHTIP_DB_USER}" \
     GLITCHTIP_DB_HOST="${GLITCHTIP_DB_HOST}" \
+    GLITCHTIP_HTTP_PORT="${GLITCHTIP_HTTP_PORT}" \
     SRC_DIR="${SRC_DIR}" \
     VENV_DIR="${VENV_DIR}" \
     PKG_NAME="${PKG_NAME}" \
