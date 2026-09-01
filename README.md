@@ -8,7 +8,7 @@ Experimental `.deb` packaging for [GlitchTip](https://glitchtip.com/). This does
 
 ```bash
 sudo ./build-glitchtip-amd64-deb.sh
-sudo dpkg -i glitchtip_$(cat VERSION)-3_amd64.deb
+sudo dpkg -i glitchtip_$(cat VERSION)-4_amd64.deb
 sudo apt-get install -f
 ```
 
@@ -33,7 +33,7 @@ FETCH_SOURCES=true sudo -E ./build-glitchtip-amd64-deb.sh
 | `DISABLE_DEBOOTSTRAP_CHROOT` | `false` | `true` = build on host (CI uses this) |
 | `KEEP_CHROOT` | `true` | Keep debootstrap chroot after build |
 | `FETCH_SOURCES` | `false` | Re-download GitLab tag archives |
-| `PKG_REVISION` | `3` | Debian package revision (`glitchtip_VERSION-REV_amd64.deb`) |
+| `PKG_REVISION` | `4` | Debian package revision (`glitchtip_VERSION-REV_amd64.deb`) |
 
 ## CI
 

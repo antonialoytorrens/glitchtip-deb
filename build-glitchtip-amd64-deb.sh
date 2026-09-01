@@ -18,7 +18,7 @@
 #   GLITCHTIP_DB_USER            (default: glitchtip)
 #   GLITCHTIP_DB_HOST            (default: 127.0.0.1)
 #   GLITCHTIP_HTTP_PORT          (default: 38417)
-#   PKG_REVISION                 (default: 3)
+#   PKG_REVISION                 (default: 4)
 #   INSTALL_PREFIX               (default: /opt/glitchtip)
 #   KEEP_CHROOT                  (default: true — chroot mode only)
 #   DISABLE_DEBOOTSTRAP_CHROOT   (default: false — set true to build on host)
