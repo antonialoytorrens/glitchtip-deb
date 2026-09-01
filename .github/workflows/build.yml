@@ -25,9 +25,10 @@ jobs:
           GLITCHTIP_DOMAIN: ci.example.test
           DISABLE_DEBOOTSTRAP_CHROOT: 'true'
           KEEP_CHROOT: false
-        run: sudo -E ./build-glitchtip-amd64-deb.sh
+        run: sudo -E bash build-glitchtip-amd64-deb.sh
 
       - name: Publish pre-release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./scripts/publish-prerelease.sh
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/publish-prerelease.sh
