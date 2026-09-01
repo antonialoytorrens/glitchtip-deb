@@ -19,7 +19,7 @@ jobs:
       - name: Prepare container
         run: apt-get update -qq && apt-get install -y -qq git ca-certificates curl tar
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build GlitchTip .deb
         env:
@@ -37,7 +37,7 @@ jobs:
           dpkg-deb -x "${PKG}" /tmp/extract
           /tmp/extract/opt/glitchtip/venv/bin/python -c "import django; print('django', django.__version__)"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: glitchtip-deb
           path: glitchtip_*_amd64.deb
@@ -47,9 +47,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: glitchtip-deb
 

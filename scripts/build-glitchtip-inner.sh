@@ -198,6 +198,30 @@ mkdir -p "${BUILD_ROOT}/var/lib/glitchtip/uploads"
 mkdir -p "${BUILD_ROOT}/var/lib/glitchtip/static"
 mkdir -p "${BUILD_ROOT}/var/log/glitchtip"
 
+mkdir -p "${BUILD_ROOT}/usr/share/dbconfig-common/data/glitchtip/install/pgsql"
+cat > "${BUILD_ROOT}/usr/share/dbconfig-common/data/glitchtip/install/pgsql" << 'DBCSQL'
+-- GlitchTip: schema managed by Django migrations (manage.py migrate)
+SELECT 1;
+DBCSQL
+
+DEB_CONFIG=$(mktemp)
+cat > "${DEB_CONFIG}" << 'DEBCONF'
+#!/bin/sh
+set -e
+. /usr/share/debconf/confmodule
+if [ -f /usr/share/dbconfig-common/dpkg/config.pgsql ]; then
+  dbc_dbname="__DB_NAME__"
+  dbc_dbuser="__DB_USER__"
+  . /usr/share/dbconfig-common/dpkg/config.pgsql
+  dbc_go glitchtip "$@"
+fi
+DEBCONF
+sed -i \
+  -e "s|__DB_NAME__|${GLITCHTIP_DB_NAME}|g" \
+  -e "s|__DB_USER__|${GLITCHTIP_DB_USER}|g" \
+  "${DEB_CONFIG}"
+chmod 755 "${DEB_CONFIG}"
+
 AFTER_INSTALL=$(mktemp)
 cat > "${AFTER_INSTALL}" << 'POSTINST'
 #!/bin/bash
@@ -206,6 +230,17 @@ set -e
 SRC="/opt/glitchtip/src"
 VENV="/opt/glitchtip/venv"
 ENV_FILE="/etc/glitchtip/glitchtip.env"
+
+if [ -f /usr/share/dbconfig-common/dpkg/postinst ]; then
+  . /usr/share/debconf/confmodule
+  . /usr/share/dbconfig-common/dpkg/postinst
+  dbc_go glitchtip "$@"
+fi
+
+case "$1" in
+  configure|reconfigure) ;;
+  *) exit 0 ;;
+esac
 
 if ! id -u glitchtip &>/dev/null; then
   adduser --system --group --home /var/lib/glitchtip \
@@ -234,49 +269,57 @@ if grep -q '__SECRETKEY_PLACEHOLDER__' "${ENV_FILE}"; then
   echo ">>> Generated SECRET_KEY."
 fi
 
-if grep -q '__DBPASS_PLACEHOLDER__' "${ENV_FILE}"; then
-  DB_PASS=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
-  sed -i "s|__DBPASS_PLACEHOLDER__|${DB_PASS}|" "${ENV_FILE}"
-  echo ">>> Generated database password."
-else
-  DB_PASS=$(python3 -c "
-import re
-m = re.search(r'postgres://[^:]+:([^@]+)@', open('${ENV_FILE}').read())
-print(m.group(1) if m else '')
-")
-fi
-
-DB_NAME=$(grep '^DATABASE_URL=' "${ENV_FILE}" | sed -n 's|.*/\([^/?]*\).*|\1|p')
-DB_USER=$(grep '^DATABASE_URL=' "${ENV_FILE}" | sed -n 's|^DATABASE_URL=postgres://\([^:]*\):.*|\1|p')
-
-if [ -z "${DB_USER}" ] || [[ "${DB_USER}" == *"="* ]]; then
-  echo "!!! Could not parse database user from DATABASE_URL in ${ENV_FILE}" >&2
-  exit 1
-fi
-
-chmod 640 "${ENV_FILE}"
-chown root:glitchtip "${ENV_FILE}"
-
 if ! systemctl is-active --quiet postgresql; then
   echo "!!! postgresql is not running. Database setup and migrations require PostgreSQL." >&2
   exit 1
 fi
 
-if runuser -u postgres -- psql -tc \
-  "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1; then
-  runuser -u postgres -- psql -c \
-    "ALTER ROLE ${DB_USER} WITH PASSWORD '${DB_PASS}';" 2>/dev/null || true
+if [ -f /etc/dbconfig-common/glitchtip.conf ]; then
+  # shellcheck disable=SC1091
+  . /etc/dbconfig-common/glitchtip.conf
+  sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgres://${dbc_dbuser}:${dbc_dbpass}@${dbc_dbserver}/${dbc_dbname}|" "${ENV_FILE}"
+  echo ">>> DATABASE_URL updated from dbconfig."
 else
-  runuser -u postgres -- psql -c \
-    "CREATE ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';"
-fi
-echo ">>> PostgreSQL role '${DB_USER}' ready."
+  echo ">>> dbconfig-no-thanks or manual DB: setting up PostgreSQL locally."
+  if grep -q '__DBPASS_PLACEHOLDER__' "${ENV_FILE}"; then
+    DB_PASS=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+    sed -i "s|__DBPASS_PLACEHOLDER__|${DB_PASS}|" "${ENV_FILE}"
+    echo ">>> Generated database password."
+  else
+    DB_PASS=$(python3 -c "
+import re
+m = re.search(r'postgres://[^:]+:([^@]+)@', open('${ENV_FILE}').read())
+print(m.group(1) if m else '')
+")
+  fi
 
-runuser -u postgres -- psql -tc \
-  "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" \
-  | grep -q 1 \
-  || runuser -u postgres -- createdb -O "${DB_USER}" "${DB_NAME}"
-echo ">>> PostgreSQL database '${DB_NAME}' ready."
+  DB_NAME=$(grep '^DATABASE_URL=' "${ENV_FILE}" | sed -n 's|.*/\([^/?]*\).*|\1|p')
+  DB_USER=$(grep '^DATABASE_URL=' "${ENV_FILE}" | sed -n 's|^DATABASE_URL=postgres://\([^:]*\):.*|\1|p')
+
+  if [ -z "${DB_USER}" ] || [[ "${DB_USER}" == *"="* ]]; then
+    echo "!!! Could not parse database user from DATABASE_URL in ${ENV_FILE}" >&2
+    exit 1
+  fi
+
+  if runuser -u postgres -- psql -tc \
+    "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1; then
+    runuser -u postgres -- psql -c \
+      "ALTER ROLE ${DB_USER} WITH PASSWORD '${DB_PASS}';" 2>/dev/null || true
+  else
+    runuser -u postgres -- psql -c \
+      "CREATE ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';"
+  fi
+  echo ">>> PostgreSQL role '${DB_USER}' ready."
+
+  runuser -u postgres -- psql -tc \
+    "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" \
+    | grep -q 1 \
+    || runuser -u postgres -- createdb -O "${DB_USER}" "${DB_NAME}"
+  echo ">>> PostgreSQL database '${DB_NAME}' ready."
+fi
+
+chmod 640 "${ENV_FILE}"
+chown root:glitchtip "${ENV_FILE}"
 
 if ! systemctl is-active --quiet valkey-server; then
   echo "!!! valkey-server is not running. Worker requires Valkey on 127.0.0.1:6379." >&2
@@ -314,10 +357,38 @@ BEFORE_REMOVE=$(mktemp)
 cat > "${BEFORE_REMOVE}" << 'PRERM'
 #!/bin/bash
 set -e
+if [ -f /usr/share/dbconfig-common/dpkg/prerm ]; then
+  . /usr/share/debconf/confmodule
+  . /usr/share/dbconfig-common/dpkg/prerm
+  dbc_go glitchtip "$@"
+fi
 systemctl stop glitchtip glitchtip-worker 2>/dev/null || true
 systemctl disable glitchtip glitchtip-worker 2>/dev/null || true
 gpasswd -d www-data glitchtip 2>/dev/null || true
 PRERM
+
+AFTER_REMOVE=$(mktemp)
+cat > "${AFTER_REMOVE}" << 'POSTRM'
+#!/bin/bash
+case "$1" in
+  remove|purge)
+    if [ -f /var/lib/dbconfig-common/config/glitchtip ]; then
+      . /usr/share/debconf/confmodule
+      if [ -f /usr/share/dbconfig-common/dpkg/postrm ]; then
+        . /usr/share/dbconfig-common/dpkg/postrm
+        dbc_go glitchtip "$@" || true
+      fi
+    fi
+    ;;
+esac
+
+case "$1" in
+  purge)
+    deluser --remove-home glitchtip 2>/dev/null || true
+    rm -rf /var/lib/glitchtip /var/log/glitchtip
+    ;;
+esac
+POSTRM
 
 echo ">>> Building .deb..."
 fpm \
@@ -337,15 +408,18 @@ fpm \
   --depends "libxml2" \
   --depends "postgresql" \
   --depends "valkey-server" \
+  --depends "dbconfig-pgsql | dbconfig-no-thanks" \
   --deb-suggests "nginx" \
   --config-files /etc/glitchtip/glitchtip.env \
+  --deb-config "${DEB_CONFIG}" \
   --after-install "${AFTER_INSTALL}" \
   --before-remove "${BEFORE_REMOVE}" \
+  --after-remove "${AFTER_REMOVE}" \
   --deb-systemd-enable \
   --deb-no-default-config-files \
   --package "${OUTPUT_DIR}/" \
   -C "${BUILD_ROOT}" \
   .
 
-rm -f "${AFTER_INSTALL}" "${BEFORE_REMOVE}"
+rm -f "${AFTER_INSTALL}" "${BEFORE_REMOVE}" "${AFTER_REMOVE}" "${DEB_CONFIG}"
 echo ">>> Package built: ${OUTPUT_DIR}/${DEB_FILE}"
