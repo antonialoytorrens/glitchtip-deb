@@ -24,14 +24,12 @@ RUN apt-get install -y -qq -f \
     /var/cache/apt/archives/pacstall_${PACSTALL_VERSION}_all.deb \
     /var/cache/apt/archives/spdx-licenses_${SPDX_LICENSES_VERSION}_all.deb
 
-RUN apt-get clean \
-  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
-
 WORKDIR /build
 COPY VERSION srclist packagelist /build/
 COPY packages/ /build/packages/
 
-RUN pacstall -BPNs -I packages/glitchtip/glitchtip.pacscript \
+RUN apt-get update -qq \
+  && pacstall -BPNs -I packages/glitchtip/glitchtip.pacscript \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* /tmp/pacstall /var/cache/apt/archives/*
 
