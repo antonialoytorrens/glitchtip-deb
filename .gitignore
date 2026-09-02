@@ -1,3 +1,4 @@
 .cache/
 .venv-requirements/
 *.deb
+assets.zip

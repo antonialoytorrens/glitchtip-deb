@@ -1,6 +1,6 @@
 pkgname="glitchtip"
 pkgver="6.2.6"
-pkgrel="5"
+pkgrel="7"
 arch=('amd64')
 url="https://glitchtip.com/"
 license=('MIT')
@@ -16,6 +16,7 @@ _glitchtip_http_port="38417"
 
 _backend="glitchtip-backend-v${pkgver}"
 _frontend="glitchtip-frontend-v${pkgver}"
+_frontend_assets="${_frontend}-assets.zip"
 _install_prefix="/opt/glitchtip"
 _python="python3.13"
 
@@ -25,7 +26,7 @@ _DPKG_ARGV=("$@")
 
 source=(
   "https://gitlab.com/glitchtip/glitchtip-backend/-/archive/v${pkgver}/${_backend}.tar.gz"
-  "https://gitlab.com/glitchtip/glitchtip-frontend/-/archive/v${pkgver}/${_frontend}.tar.gz"
+  "${_frontend_assets}::https://gitlab.com/api/v4/projects/15449363/jobs/artifacts/v${pkgver}/download?job=build-assets"
   "0001-trim-optional-deps.patch"
   "0002-local-filesystem-profile.patch"
   "0003-deb-database-components.patch"
@@ -45,7 +46,7 @@ makedepends_trixie=(
 makedepends+=(
   "build-essential" "pkg-config" "patch"
   "libpq-dev" "libxml2-dev" "zlib1g-dev" "libssl-dev" "libffi-dev"
-  "curl" "ca-certificates" "tzdata" "git" "rustc" "cargo" "nodejs" "npm"
+  "curl" "ca-certificates" "tzdata" "git" "rustc" "cargo"
 )
 
 depends_trixie=(
@@ -61,24 +62,29 @@ recommends=("nginx")
 backup=('etc/glitchtip/glitchtip.env')
 
 prepare() {
+  set -e
   cd "${srcdir}/${_backend}"
   for p in "${srcdir}"/*.patch; do
     patch -p1 --forward -i "${p}"
   done
 }
 
-build() {
-  cd "${srcdir}/${_frontend}"
-  npm ci
-  npm run build-prod
+_install_frontend_dist() {
+  local dest="$1"
+  local browser="${srcdir}/dist/glitchtip-frontend/browser"
 
+  mkdir -p "${dest}"
+  cp -a "${browser}/." "${dest}/"
+  test -f "${dest}/index.html"
+}
+
+build() {
+  set -e
   local staging="${srcdir}/staging"
   mkdir -p "${staging}${_install_prefix}/src"
   cp -a "${srcdir}/${_backend}/." "${staging}${_install_prefix}/src/"
 
-  mkdir -p "${staging}${_install_prefix}/src/dist"
-  cp -a "${srcdir}/${_frontend}/dist/glitchtip-frontend/browser/." \
-    "${staging}${_install_prefix}/src/dist/"
+  _install_frontend_dist "${staging}${_install_prefix}/src/dist"
 
   local venv="${staging}${_install_prefix}/venv"
   "${_python}" -m venv "${venv}"

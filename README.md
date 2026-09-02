@@ -6,7 +6,7 @@ Experimental `.deb` packaging for [GlitchTip](https://glitchtip.com/). This does
 
 ## Quick start
 
-`docker build` needs ~10 GB free disk (npm + Rust + venv).
+`docker build` needs ~10 GB free disk (Rust + venv; frontend comes from GitLab CI assets, not npm).
 
 ### Install from Release
 
@@ -19,9 +19,11 @@ sudo apt-get install -f
 
 ### Build (Docker)
 
+Frontend is taken from the upstream `build-assets` CI job (`assets.zip` → `dist/glitchtip-frontend/browser/`). No local npm build (Angular 22 needs Node ≥22; Debian Trixie has Node 20).
+
 ```bash
 make
-sudo dpkg -i glitchtip_$(cat VERSION)-pacstall5_amd64.deb
+sudo dpkg -i glitchtip_$(cat VERSION)-pacstall7_amd64.deb
 sudo apt-get install -f
 ```
 

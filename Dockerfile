@@ -15,7 +15,7 @@ RUN apt-get update -qq \
     ca-certificates sudo \
     python3.13 python3.13-venv python3.13-dev build-essential pkg-config patch \
     libpq-dev libxml2-dev zlib1g-dev libssl-dev libffi-dev \
-    git rustc cargo tzdata nodejs npm
+    git rustc cargo tzdata
 
 ADD https://github.com/pacstall/pacstall/releases/download/${PACSTALL_VERSION}/pacstall_${PACSTALL_VERSION}-${PACSTALL_REVISION}_all.deb \
   /var/cache/apt/archives/pacstall_${PACSTALL_VERSION}-${PACSTALL_REVISION}_all.deb
