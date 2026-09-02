@@ -8,16 +8,20 @@ pkgdesc="GlitchTip error tracking (trimmed profile, native systemd, bundled venv
 maintainer=("Antoni Aloy <https://github.com/antonialoytorrens/glitchtip-deb>")
 external_connection=true
 
-_glitchtip_domain="${GLITCHTIP_DOMAIN:-glitchtip.antonialoytorrens.com}"
-_glitchtip_db_name="${GLITCHTIP_DB_NAME:-glitchtip}"
-_glitchtip_db_user="${GLITCHTIP_DB_USER:-glitchtip}"
-_glitchtip_db_host="${GLITCHTIP_DB_HOST:-127.0.0.1}"
-_glitchtip_http_port="${GLITCHTIP_HTTP_PORT:-38417}"
+_glitchtip_domain="glitchtip.localhost.local"
+_glitchtip_db_name="glitchtip"
+_glitchtip_db_user="glitchtip"
+_glitchtip_db_host="127.0.0.1"
+_glitchtip_http_port="38417"
 
 _backend="glitchtip-backend-v${pkgver}"
 _frontend="glitchtip-frontend-v${pkgver}"
 _install_prefix="/opt/glitchtip"
 _python="python3.13"
+
+# Pacstall calls post_install/pre_remove/post_remove with no args; dpkg's
+# argv is still available at top-level when this file is executed.
+_DPKG_ARGV=("$@")
 
 source=(
   "https://gitlab.com/glitchtip/glitchtip-backend/-/archive/v${pkgver}/${_backend}.tar.gz"
@@ -25,17 +29,32 @@ source=(
   "0001-trim-optional-deps.patch"
   "0002-local-filesystem-profile.patch"
   "0003-deb-database-components.patch"
+  "glitchtip.env.in"
+  "build-info.in"
+  "glitchtip.service"
+  "glitchtip-worker.service"
+  "dbconfig-pgsql.sql"
+  "debconfig.in"
+  "requirements.txt"
 )
 
-makedepends=(
-  "python3.13" "python3.13-venv" "python3.13-dev" "build-essential" "pkg-config" "patch"
+makedepends_trixie=(
+  "python3.13" "python3.13-venv" "python3.13-dev" 
+)
+
+makedepends+=(
+  "build-essential" "pkg-config" "patch"
   "libpq-dev" "libxml2-dev" "zlib1g-dev" "libssl-dev" "libffi-dev"
   "curl" "ca-certificates" "tzdata" "git" "rustc" "cargo" "nodejs" "npm"
 )
 
-depends=(
-  "python3.13" "libpq5" "libxml2" "postgresql" "valkey-server"
-  "dbconfig-pgsql | dbconfig-no-thanks"
+depends_trixie=(
+  "python3.13"
+)
+
+depends+=(
+  "libpq5" "libxml2" "postgresql" "valkey-server"
+  "dbconfig-pgsql" "postgresql" "debconf" "debconf-utils"
 )
 
 recommends=("nginx")
@@ -43,17 +62,12 @@ backup=('etc/glitchtip/glitchtip.env')
 
 prepare() {
   cd "${srcdir}/${_backend}"
-  for p in "${srcdir}"/000*.patch; do
+  for p in "${srcdir}"/*.patch; do
     patch -p1 --forward -i "${p}"
   done
 }
 
 build() {
-  if ! command -v uv &>/dev/null; then
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="${HOME}/.local/bin:/root/.local/bin:${PATH}"
-  fi
-
   cd "${srcdir}/${_frontend}"
   npm ci
   npm run build-prod
@@ -66,19 +80,17 @@ build() {
   cp -a "${srcdir}/${_frontend}/dist/glitchtip-frontend/browser/." \
     "${staging}${_install_prefix}/src/dist/"
 
-  export UV_PROJECT_ENVIRONMENT="${staging}${_install_prefix}/venv"
-  export UV_PYTHON="${_python}"
-  "${_python}" -m venv "${staging}${_install_prefix}/venv"
-  (
-    cd "${staging}${_install_prefix}/src"
-    uv lock
-    uv sync --frozen --no-dev --python "${_python}"
-  )
-
-  sed -i "s|${staging}||g" "${staging}${_install_prefix}/venv/pyvenv.cfg"
-  find "${staging}${_install_prefix}/venv/bin" -type f -exec sed -i "s|${staging}||g" {} +
-
   local venv="${staging}${_install_prefix}/venv"
+  "${_python}" -m venv "${venv}"
+  "${venv}/bin/pip" install --no-cache-dir --upgrade pip
+  "${venv}/bin/pip" install --no-cache-dir --require-hashes \
+    -r "${srcdir}/requirements.txt"
+  "${venv}/bin/pip" install --no-cache-dir --no-deps \
+    "${staging}${_install_prefix}/src"
+
+  sed -i "s|${staging}||g" "${venv}/pyvenv.cfg"
+  find "${venv}/bin" -type f -exec sed -i "s|${staging}||g" {} +
+
   rm -rf "${venv}/lib"/python*/site-packages/{pip,setuptools,wheel,pkg_resources} 2>/dev/null || true
   rm -rf "${venv}/lib"/python*/site-packages/{pip,setuptools,wheel}-*.dist-info 2>/dev/null || true
   find "${venv}" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
@@ -87,243 +99,178 @@ build() {
   find "${staging}${_install_prefix}/src" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 }
 
+_render_in() {
+  sed -e "s|@GLITCHTIP_DOMAIN@|${_glitchtip_domain}|g" \
+      -e "s|@pkgver@|${pkgver}|g" \
+      -e "s|@GLITCHTIP_HTTP_PORT@|${_glitchtip_http_port}|g" \
+      -e "s|@GLITCHTIP_DB_NAME@|${_glitchtip_db_name}|g" \
+      -e "s|@GLITCHTIP_DB_USER@|${_glitchtip_db_user}|g" \
+      -e "s|@GLITCHTIP_DB_HOST@|${_glitchtip_db_host}|g" \
+      "${1}" > "${2}"
+}
+
 package() {
   local staging="${srcdir}/staging"
   mkdir -p "${pkgdir}${_install_prefix}"
   cp -a "${staging}${_install_prefix}/." "${pkgdir}${_install_prefix}/"
 
   mkdir -p "${pkgdir}/etc/glitchtip"
-  cat > "${pkgdir}/etc/glitchtip/glitchtip.env" << ENVFILE
-SECRET_KEY=__SECRETKEY_PLACEHOLDER__
-EMAIL_URL=consolemail://
-DEFAULT_FROM_EMAIL=noreply@${_glitchtip_domain}
-GLITCHTIP_DOMAIN=https://${_glitchtip_domain}
-ALLOWED_HOSTS=${_glitchtip_domain}
-CSRF_TRUSTED_ORIGINS=https://${_glitchtip_domain}
-GLITCHTIP_VERSION=${pkgver}
-GLITCHTIP_ENABLE_DUCKDB=false
-GLITCHTIP_ENABLE_MCP=false
-MEDIA_ROOT=/var/lib/glitchtip/uploads
-STATIC_ROOT=/var/lib/glitchtip/static
-VALKEY_URL=redis://127.0.0.1:6379/0
-GLITCHTIP_HTTP_PORT=${_glitchtip_http_port}
-DJANGO_SETTINGS_MODULE=glitchtip.settings
-LOG_LEVEL=WARNING
-ENVFILE
+  _render_in "${srcdir}/glitchtip.env.in" \
+    "${pkgdir}/etc/glitchtip/glitchtip.env"
 
   mkdir -p "${pkgdir}/etc/systemd/system"
-  install -Dm644 /dev/stdin "${pkgdir}/etc/systemd/system/glitchtip.service" << 'SVCWEB'
-[Unit]
-Description=GlitchTip web server (granian)
-After=network.target postgresql.service valkey-server.service
-Wants=postgresql.service valkey-server.service
-
-[Service]
-Type=simple
-User=glitchtip
-Group=glitchtip
-EnvironmentFile=/etc/glitchtip/glitchtip.env
-WorkingDirectory=/opt/glitchtip/src
-ExecStart=/bin/bash -c 'exec /opt/glitchtip/venv/bin/granian \
-  --interface asginl \
-  glitchtip.asgi:application \
-  --host 127.0.0.1 \
-  --port "${GLITCHTIP_HTTP_PORT}" \
-  --workers 1 \
-  --no-ws'
-Restart=on-failure
-RestartSec=5
-PrivateTmp=true
-NoNewPrivileges=true
-
-[Install]
-WantedBy=multi-user.target
-SVCWEB
-
-  install -Dm644 /dev/stdin "${pkgdir}/etc/systemd/system/glitchtip-worker.service" << 'SVCWORKER'
-[Unit]
-Description=GlitchTip background worker
-After=network.target postgresql.service valkey-server.service glitchtip.service
-Wants=postgresql.service valkey-server.service
-
-[Service]
-Type=simple
-User=glitchtip
-Group=glitchtip
-EnvironmentFile=/etc/glitchtip/glitchtip.env
-Environment=IS_WORKER=true
-WorkingDirectory=/opt/glitchtip/src
-ExecStart=/opt/glitchtip/venv/bin/python manage.py runworker --scheduler
-Restart=on-failure
-RestartSec=10
-PrivateTmp=true
-NoNewPrivileges=true
-
-[Install]
-WantedBy=multi-user.target
-SVCWORKER
+  install -Dm644 "${srcdir}/glitchtip.service" \
+    "${pkgdir}/etc/systemd/system/glitchtip.service"
+  install -Dm644 "${srcdir}/glitchtip-worker.service" \
+    "${pkgdir}/etc/systemd/system/glitchtip-worker.service"
 
   mkdir -p "${pkgdir}/var/lib/glitchtip/uploads"
   mkdir -p "${pkgdir}/var/lib/glitchtip/static"
   mkdir -p "${pkgdir}/var/log/glitchtip"
 
   mkdir -p "${pkgdir}/usr/share/dbconfig-common/data/glitchtip/install"
-  cat > "${pkgdir}/usr/share/dbconfig-common/data/glitchtip/install/pgsql" << 'DBCSQL'
--- GlitchTip: schema managed by Django migrations (manage.py migrate)
-SELECT 1;
-DBCSQL
+  install -Dm644 "${srcdir}/dbconfig-pgsql.sql" \
+    "${pkgdir}/usr/share/dbconfig-common/data/glitchtip/install/pgsql"
 
   mkdir -p "${pkgdir}/usr/share/glitchtip"
-  cat > "${pkgdir}/usr/share/glitchtip/build-info" << BUILDINFO
-GLITCHTIP_DB_NAME=${_glitchtip_db_name}
-GLITCHTIP_DB_USER=${_glitchtip_db_user}
-GLITCHTIP_DB_HOST=${_glitchtip_db_host}
-GLITCHTIP_HTTP_PORT=${_glitchtip_http_port}
-BUILDINFO
+  _render_in "${srcdir}/build-info.in" \
+    "${pkgdir}/usr/share/glitchtip/build-info"
 
   mkdir -p "${pkgdir}/DEBIAN"
-  install -Dm755 /dev/stdin "${pkgdir}/DEBIAN/config" << DEBCONF
-#!/bin/sh
-set -e
-. /usr/share/debconf/confmodule
-if [ -f /usr/share/dbconfig-common/dpkg/config.pgsql ]; then
-  dbc_dbname="${_glitchtip_db_name}"
-  dbc_dbuser="${_glitchtip_db_user}"
-  . /usr/share/dbconfig-common/dpkg/config.pgsql
-  dbc_go glitchtip "\$@"
-fi
-DEBCONF
+  _render_in "${srcdir}/debconfig.in" \
+    "${pkgdir}/DEBIAN/config"
+  chmod 755 "${pkgdir}/DEBIAN/config"
+
 }
 
 post_install() {
-  local src="/opt/glitchtip/src"
-  local venv="/opt/glitchtip/venv"
-  local env_file="/etc/glitchtip/glitchtip.env"
-  # shellcheck disable=SC1091
-  . /usr/share/glitchtip/build-info
+    # Pacstall invokes this with no args; reuse dpkg argv captured at load.
+    if [ "$#" -eq 0 ] && [ "${#_DPKG_ARGV[@]}" -gt 0 ]; then
+        set -- "${_DPKG_ARGV[@]}"
+    elif [ "$#" -eq 0 ]; then
+        set -- configure
+    fi
 
-  if [ -f /usr/share/dbconfig-common/dpkg/postinst.pgsql ]; then
+    local src="/opt/glitchtip/src"
+    local venv="/opt/glitchtip/venv"
+    local env_file="/etc/glitchtip/glitchtip.env"
+    local pkg="glitchtip"
+
     . /usr/share/debconf/confmodule
+
+    if ! id -u glitchtip &>/dev/null; then
+        adduser --system --group --home /var/lib/glitchtip \
+            --no-create-home --shell /usr/sbin/nologin glitchtip
+        echo ">>> Created system user 'glitchtip'."
+    fi
+
+    mkdir -p /var/lib/glitchtip/uploads /var/lib/glitchtip/static
+    chown -R glitchtip:glitchtip /var/lib/glitchtip /var/log/glitchtip
+
+    run_as_glitchtip() {
+        runuser -u glitchtip -- bash -c '
+            set -a; source "$1"; set +a
+            cd "$2" || exit 1
+            shift 2
+            exec "$@"
+        ' bash "$env_file" "$src" "$@"
+    }
+
+    if grep -q '__SECRETKEY_PLACEHOLDER__' "$env_file"; then
+        local secret
+        secret=$("$venv/bin/python" -c "import secrets; print(secrets.token_urlsafe(50))")
+        sed -i "s|__SECRETKEY_PLACEHOLDER__|${secret}|" "$env_file"
+        echo ">>> Generated SECRET_KEY."
+    fi
+
+    # debconf / dbconfig-common
+    if [ ! -f /usr/share/dbconfig-common/dpkg/postinst.pgsql ]; then
+        echo "!!! dbconfig-pgsql is required but not installed." >&2
+        exit 1
+    fi
     . /usr/share/dbconfig-common/dpkg/postinst.pgsql
-    dbc_go glitchtip "$@"
-  fi
+    dbc_go "$pkg" "$@"
 
-  case "$1" in
-    configure|reconfigure) ;;
-    *) return 0 ;;
-  esac
-
-  if ! id -u glitchtip &>/dev/null; then
-    adduser --system --group --home /var/lib/glitchtip \
-      --no-create-home --shell /bin/bash glitchtip
-    echo ">>> Created system user 'glitchtip'."
-  fi
-
-  mkdir -p /var/lib/glitchtip/uploads /var/lib/glitchtip/static
-  chown -R glitchtip:glitchtip /var/lib/glitchtip /var/log/glitchtip
-
-  run_as_glitchtip() {
-    runuser -u glitchtip -- bash -c '
-      set -a
-      source "$1"
-      set +a
-      cd "$2" || exit 1
-      shift 2
-      exec "$@"
-    ' bash "${env_file}" "${src}" "$@"
-  }
-
-  if grep -q '__SECRETKEY_PLACEHOLDER__' "${env_file}"; then
-    local secret
-    secret=$("${venv}/bin/python" -c "import secrets; print(secrets.token_urlsafe(50))")
-    sed -i "s|__SECRETKEY_PLACEHOLDER__|${secret}|" "${env_file}"
-    echo ">>> Generated SECRET_KEY."
-  fi
-
-  if ! systemctl is-active --quiet postgresql; then
-    echo "!!! postgresql is not running. Database setup and migrations require PostgreSQL." >&2
-    exit 1
-  fi
-
-  if [ -f /etc/dbconfig-common/glitchtip.conf ]; then
+    if [ ! -f /etc/dbconfig-common/${pkg}.conf ]; then
+        echo "!!! dbconfig-common did not produce /etc/dbconfig-common/${pkg}.conf" >&2
+        exit 1
+    fi
     # shellcheck disable=SC1091
-    . /etc/dbconfig-common/glitchtip.conf
+    . /etc/dbconfig-common/${pkg}.conf
+
+    ensure_pg_role_db() {
+        local role="$1"
+        local dbname="$2"
+        local pass="${3:-}"
+        if runuser -u postgres -- psql -tc \
+            "SELECT 1 FROM pg_roles WHERE rolname='${role}'" | grep -q 1; then
+            if [ -n "${pass}" ]; then
+                runuser -u postgres -- psql -c \
+                    "ALTER ROLE ${role} WITH LOGIN PASSWORD '${pass}';" 2>/dev/null || true
+            else
+                runuser -u postgres -- psql -c \
+                    "ALTER ROLE ${role} WITH LOGIN;" 2>/dev/null || true
+            fi
+        elif [ -n "${pass}" ]; then
+            runuser -u postgres -- psql -c \
+                "CREATE ROLE ${role} WITH LOGIN PASSWORD '${pass}';"
+        else
+            runuser -u postgres -- psql -c \
+                "CREATE ROLE ${role} WITH LOGIN;"
+        fi
+        runuser -u postgres -- psql -tc \
+            "SELECT 1 FROM pg_database WHERE datname='${dbname}'" | grep -q 1 \
+            || runuser -u postgres -- createdb -O "${role}" "${dbname}"
+    }
+
+    write_db_env() {
+        local use_password="$1"
+        grep -vE '^(DATABASE_NAME|DATABASE_USER|DATABASE_PASSWORD|DATABASE_HOST|DATABASE_PORT)=' \
+            "$env_file" > "${env_file}.tmp"
+        {
+            cat "${env_file}.tmp"
+            echo "DATABASE_NAME=${dbc_dbname}"
+            echo "DATABASE_USER=${dbc_dbuser}"
+            if [ "${use_password}" = "1" ]; then
+                echo "DATABASE_PASSWORD=${dbc_dbpass}"
+                echo "DATABASE_HOST=${db_host}"
+                echo "DATABASE_PORT=${dbc_dbport:-5432}"
+            fi
+        } > "$env_file"
+        rm -f "${env_file}.tmp"
+    }
+
     local db_host="${dbc_dbserver:-127.0.0.1}"
-    case "${db_host}" in local|localhost) db_host="127.0.0.1" ;; esac
-    grep -vE '^(DATABASE_NAME|DATABASE_USER|DATABASE_PASSWORD|DATABASE_HOST|DATABASE_PORT)=' \
-      "${env_file}" > "${env_file}.tmp"
-    {
-      cat "${env_file}.tmp"
-      echo "DATABASE_NAME=${dbc_dbname}"
-      echo "DATABASE_USER=${dbc_dbuser}"
-      case "${dbc_authmethod_user}:${dbc_dbserver:-local}" in
-        ident:local|ident:|ident:localhost|ident:127.0.0.1) ;;
-        *)
-          echo "DATABASE_PASSWORD=${dbc_dbpass}"
-          echo "DATABASE_HOST=${db_host}"
-          echo "DATABASE_PORT=${dbc_dbport:-5432}"
-          ;;
-      esac
-    } > "${env_file}"
-    rm -f "${env_file}.tmp"
-    echo ">>> Database env updated from dbconfig."
+    case "$db_host" in local|localhost) db_host="127.0.0.1" ;; esac
 
-    if runuser -u postgres -- psql -tc \
-      "SELECT 1 FROM pg_roles WHERE rolname='${dbc_dbuser}'" | grep -q 1; then
-      if [ "${dbc_authmethod_user}" != "ident" ] && [ -n "${dbc_dbpass}" ]; then
-        runuser -u postgres -- psql -c \
-          "ALTER ROLE ${dbc_dbuser} WITH PASSWORD '${dbc_dbpass}';" 2>/dev/null || true
-      fi
-    elif [ "${dbc_authmethod_user}" = "ident" ]; then
-      runuser -u postgres -- psql -c "CREATE ROLE ${dbc_dbuser} WITH LOGIN;"
+    if [ "${dbc_install}" != "true" ]; then
+        # Opted out of dbconfig install: bootstrap local peer auth so migrate works.
+        dbc_dbname="${dbc_dbname:-glitchtip}"
+        dbc_dbuser="${dbc_dbuser:-glitchtip}"
+        echo ">>> dbconfig-install=false: bootstrapping local PostgreSQL role/db (${dbc_dbname}) with peer auth."
+        ensure_pg_role_db "${dbc_dbuser}" "${dbc_dbname}"
+        write_db_env 0
+        echo ">>> Database env updated for peer/unix socket (${dbc_dbname})."
     else
-      runuser -u postgres -- psql -c \
-        "CREATE ROLE ${dbc_dbuser} WITH LOGIN PASSWORD '${dbc_dbpass}';"
+        case "${dbc_authmethod_user}:${dbc_dbserver:-local}" in
+            ident:local|ident:|ident:localhost|ident:127.0.0.1)
+                ensure_pg_role_db "${dbc_dbuser}" "${dbc_dbname}"
+                write_db_env 0
+                echo ">>> Database env updated from dbconfig (${dbc_dbname}, peer/ident)."
+                ;;
+            *)
+                ensure_pg_role_db "${dbc_dbuser}" "${dbc_dbname}" "${dbc_dbpass}"
+                write_db_env 1
+                echo ">>> Database env updated from dbconfig (${dbc_dbname}, password/TCP)."
+                ;;
+        esac
     fi
-    runuser -u postgres -- psql -tc \
-      "SELECT 1 FROM pg_database WHERE datname='${dbc_dbname}'" | grep -q 1 \
-      || runuser -u postgres -- createdb -O "${dbc_dbuser}" "${dbc_dbname}"
-    echo ">>> PostgreSQL role/database ready (${dbc_dbname})."
-  else
-    echo ">>> dbconfig-no-thanks: setting up PostgreSQL locally."
-    local db_pass
-    db_pass=$("${venv}/bin/python" -c "import secrets; print(secrets.token_urlsafe(32))")
-    grep -vE '^(DATABASE_NAME|DATABASE_USER|DATABASE_PASSWORD|DATABASE_HOST|DATABASE_PORT)=' \
-      "${env_file}" > "${env_file}.tmp"
-    {
-      cat "${env_file}.tmp"
-      echo "DATABASE_NAME=${GLITCHTIP_DB_NAME}"
-      echo "DATABASE_USER=${GLITCHTIP_DB_USER}"
-      echo "DATABASE_PASSWORD=${db_pass}"
-      echo "DATABASE_HOST=${GLITCHTIP_DB_HOST}"
-      echo "DATABASE_PORT=5432"
-    } > "${env_file}"
-    rm -f "${env_file}.tmp"
 
-    if runuser -u postgres -- psql -tc \
-      "SELECT 1 FROM pg_roles WHERE rolname='${GLITCHTIP_DB_USER}'" | grep -q 1; then
-      runuser -u postgres -- psql -c \
-        "ALTER ROLE ${GLITCHTIP_DB_USER} WITH PASSWORD '${db_pass}';" 2>/dev/null || true
-    else
-      runuser -u postgres -- psql -c \
-        "CREATE ROLE ${GLITCHTIP_DB_USER} WITH LOGIN PASSWORD '${db_pass}';"
-    fi
-    runuser -u postgres -- psql -tc \
-      "SELECT 1 FROM pg_database WHERE datname='${GLITCHTIP_DB_NAME}'" | grep -q 1 \
-      || runuser -u postgres -- createdb -O "${GLITCHTIP_DB_USER}" "${GLITCHTIP_DB_NAME}"
-    echo ">>> PostgreSQL database '${GLITCHTIP_DB_NAME}' ready."
-  fi
+    chmod 640 "$env_file"
+    chown root:glitchtip "$env_file"
 
-  chmod 640 "${env_file}"
-  chown root:glitchtip "${env_file}"
-
-  if ! systemctl is-active --quiet valkey-server; then
-    echo "!!! valkey-server is not running. Worker requires Valkey on 127.0.0.1:6379." >&2
-    exit 1
-  fi
-
-  echo ">>> Verifying database connection..."
-  run_as_glitchtip "${venv}/bin/python" -c "
+    echo ">>> Verifying database connection..."
+    if ! run_as_glitchtip "$venv/bin/python" -c "
 import os
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'glitchtip.settings')
 import django
@@ -331,55 +278,61 @@ django.setup()
 from django.db import connection
 connection.ensure_connection()
 print('>>> Database connection OK.')
-"
+"; then
+        echo "!!! Cannot connect to PostgreSQL as '${dbc_dbuser}'. Check /etc/glitchtip/glitchtip.env and pg_hba.conf." >&2
+        exit 1
+    fi
 
-  echo ">>> Running migrations..."
-  run_as_glitchtip "${venv}/bin/python" "${src}/manage.py" migrate --no-input
-  echo ">>> Maintaining partitions..."
-  run_as_glitchtip "${venv}/bin/python" "${src}/manage.py" maintain_partitions || true
-  echo ">>> Collecting static files..."
-  run_as_glitchtip "${venv}/bin/python" "${src}/manage.py" collectstatic --no-input
+    echo ">>> Running migrations..."
+    run_as_glitchtip "$venv/bin/python" "$src/manage.py" migrate --no-input
+    run_as_glitchtip "$venv/bin/python" "$src/manage.py" maintain_partitions || true
+    run_as_glitchtip "$venv/bin/python" "$src/manage.py" collectstatic --no-input
 
-  if id -u www-data &>/dev/null; then
-    usermod -aG glitchtip www-data
-  fi
+    if id -u www-data &>/dev/null; then
+        usermod -aG glitchtip www-data
+    fi
 
-  chmod 750 /var/lib/glitchtip
-  chmod -R g+rX /var/lib/glitchtip/static 2>/dev/null || true
+    chmod 750 /var/lib/glitchtip
+    chmod -R g+rX /var/lib/glitchtip/static 2>/dev/null || true
 
-  systemctl daemon-reload
-  systemctl enable --now glitchtip glitchtip-worker
-  echo ">>> Services glitchtip and glitchtip-worker enabled."
-  echo ">>> GlitchTip is ready. Proxy to http://127.0.0.1:${GLITCHTIP_HTTP_PORT}"
+    systemctl daemon-reload
+    systemctl enable --now glitchtip glitchtip-worker
+
+    # debconf best-practice: stop talking to the frontend once done
+    db_stop
+
+    # shellcheck disable=SC1091
+    . /usr/share/glitchtip/build-info 2>/dev/null || true
+    echo ">>> GlitchTip is ready. Proxy to http://127.0.0.1:${GLITCHTIP_HTTP_PORT:-38417}"
 }
 
 pre_remove() {
-  if [ -f /usr/share/dbconfig-common/dpkg/prerm.pgsql ]; then
-    . /usr/share/debconf/confmodule
-    . /usr/share/dbconfig-common/dpkg/prerm.pgsql
-    dbc_go glitchtip "$@"
-  fi
-  systemctl stop glitchtip glitchtip-worker 2>/dev/null || true
-  systemctl disable glitchtip glitchtip-worker 2>/dev/null || true
-  gpasswd -d www-data glitchtip 2>/dev/null || true
+    if [ "$#" -eq 0 ] && [ "${#_DPKG_ARGV[@]}" -gt 0 ]; then
+        set -- "${_DPKG_ARGV[@]}"
+    elif [ "$#" -eq 0 ]; then
+        set -- remove
+    fi
+
+    if [ -f /usr/share/dbconfig-common/dpkg/prerm.pgsql ]; then
+        . /usr/share/debconf/confmodule
+        . /usr/share/dbconfig-common/dpkg/prerm.pgsql
+        dbc_go glitchtip "$@"
+    fi
+    systemctl stop glitchtip glitchtip-worker 2>/dev/null || true
+    systemctl disable glitchtip glitchtip-worker 2>/dev/null || true
+    gpasswd -d www-data glitchtip 2>/dev/null || true
 }
 
 post_remove() {
-  case "$1" in
-    remove|purge)
-      if [ -f /var/lib/dbconfig-common/config/glitchtip ]; then
+    if [ "$#" -eq 0 ] && [ "${#_DPKG_ARGV[@]}" -gt 0 ]; then
+        set -- "${_DPKG_ARGV[@]}"
+    elif [ "$#" -eq 0 ]; then
+        set -- remove
+    fi
+
+    if [ -f /usr/share/dbconfig-common/dpkg/postrm.pgsql ]; then
         . /usr/share/debconf/confmodule
-        if [ -f /usr/share/dbconfig-common/dpkg/postrm.pgsql ]; then
-          . /usr/share/dbconfig-common/dpkg/postrm.pgsql
-          dbc_go glitchtip "$@" || true
-        fi
-      fi
-      ;;
-  esac
-  case "$1" in
-    purge)
-      deluser --remove-home glitchtip 2>/dev/null || true
-      rm -rf /var/lib/glitchtip /var/log/glitchtip
-      ;;
-  esac
+        . /usr/share/dbconfig-common/dpkg/postrm.pgsql
+        dbc_go glitchtip "$@"
+    fi
 }

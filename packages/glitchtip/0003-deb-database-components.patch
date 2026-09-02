@@ -5,7 +5,7 @@
  # Database
  # https://docs.djangoproject.com/en/dev/ref/settings/#databases
 -# Use either DATABASE_URL or individual components
-+# Database settings from dbconfig-pgsql via DATABASE_* env vars (see glitchtip.env).
++# Database settings from DATABASE_* env vars (see glitchtip.env).
  DATABASES = {
 -    "default": env.db(
 -        "DATABASE_URL", default="postgres://postgres:postgres@postgres:5432/postgres"

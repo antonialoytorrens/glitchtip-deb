@@ -4,5 +4,5 @@ pkgrel = 5
 arch = amd64
 url = https://glitchtip.com/
 license = MIT
-pkgdesc = GlitchTip error tracking (trimmed profile, native systemd, bundled venv)
-depends = python3.13 libpq5 libxml2 postgresql valkey-server
+pkgdesc = GlitchTip error tracking (postgresql backend only)
+depends = python3.13 libpq5 libxml2 postgresql valkey-server dbconfig-pgsql | dbconfig-no-thanks

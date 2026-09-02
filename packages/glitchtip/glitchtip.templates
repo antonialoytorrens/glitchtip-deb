@@ -1,0 +1,85 @@
+Template: glitchtip/dbconfig-install
+Type: boolean
+Default: true
+_Description: Configure database for glitchtip with dbconfig-common?
+ The glitchtip package must have a database installed and configured
+ before it can be used. This can be optionally handled with
+ dbconfig-common.
+ .
+ If you are an advanced database administrator and know that you want
+ to perform this configuration manually, you should refuse this option.
+ Details on what needs to be done should most likely be provided in
+ /usr/share/doc/glitchtip.
+ .
+ Otherwise, you should probably choose this option.
+
+Template: glitchtip/pgsql/method
+Type: select
+Choices: ${choices}
+_Description: Database installation method for glitchtip:
+ The glitchtip package can be configured to use one of two
+ different database types for its database. The default choice will
+ use dbconfig-common instead, configuring the database automatically
+ for you, though you can also connect to a database you manage yourself.
+ .
+ If you choose to connect to a database that you already manage, you
+ need to have prepared this database and populated it with the
+ correct database schema already.
+
+Template: glitchtip/pgsql/authmethod-admin
+Type: select
+Choices: ident, password
+Default: ident
+_Description: Authentication method to use with PostgreSQL for glitchtip:
+ The following methods are available for authenticating database
+ access with your PostgreSQL server, for the administrator account.
+
+Template: glitchtip/pgsql/authmethod-user
+Type: select
+Choices: ident, password
+Default: ident
+_Description: Authentication method to use with PostgreSQL for glitchtip:
+ The following methods are available for authenticating database
+ access with your PostgreSQL server, for the user account.
+
+Template: glitchtip/db/dbname
+Type: string
+Default: glitchtip
+_Description: Name of your database's administrative user:
+ Please provide the name of the database's administrative user.
+
+Template: glitchtip/db/app-user
+Type: string
+Default: glitchtip
+_Description: Name of the database's user:
+ Please specify the name of the database's user.
+
+Template: glitchtip/pgsql/admin-user
+Type: string
+Default: postgres
+_Description: Name of the database's admin user:
+ Please specify the account that will be used for database
+ administration.
+
+Template: glitchtip/remote/host
+Type: string
+_Description: Remote host name:
+ Please provide the hostname or IP address of the database server
+ you want to connect to.
+
+Template: glitchtip/remote/port
+Type: string
+_Description: Remote database port:
+ Please provide the port used to connect to the database, if it is
+ not the default port for your database type.
+
+Template: glitchtip/purge
+Type: boolean
+Default: false
+_Description: Do you want to purge the database when the package is removed?
+ Please choose whether the database installed by dbconfig-common
+ should be removed when the package is purged.
+ .
+ This choice only has effect if the database is on this host, and if
+ dbconfig-common is handling the database installation.
+ 

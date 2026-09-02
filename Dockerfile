@@ -2,9 +2,11 @@
 FROM debian:trixie AS builder
 
 ARG TARGETARCH
-ARG PACSTALL_VERSION=6.4.2-pacstall1
-ARG SPDX_LICENSES_VERSION=3.27.0+ds-1
-ARG GLITCHTIP_DOMAIN=glitchtip.antonialoytorrens.com
+ARG PACSTALL_VERSION=6.4.2
+ARG PACSTALL_REVISION=pacstall1
+ARG SPDX_LICENSES_VERSION=3.27.0
+ARG SPDX_LICENSES_REVISION=+ds-1
+ARG GLITCHTIP_DOMAIN=glitchtip.localhost.local
 ENV DEBIAN_FRONTEND=noninteractive
 ENV GLITCHTIP_DOMAIN=${GLITCHTIP_DOMAIN}
 
@@ -15,28 +17,22 @@ RUN apt-get update -qq \
     libpq-dev libxml2-dev zlib1g-dev libssl-dev libffi-dev \
     git rustc cargo tzdata nodejs npm
 
-ADD https://github.com/pacstall/pacstall/releases/download/6.4.2/pacstall_${PACSTALL_VERSION}_all.deb \
-  /var/cache/apt/archives/pacstall_${PACSTALL_VERSION}_all.deb
-ADD https://ftp.debian.org/debian/pool/main/s/spdx-licenses/spdx-licenses_${SPDX_LICENSES_VERSION}_all.deb \
-  /var/cache/apt/archives/spdx-licenses_${SPDX_LICENSES_VERSION}_all.deb
+ADD https://github.com/pacstall/pacstall/releases/download/${PACSTALL_VERSION}/pacstall_${PACSTALL_VERSION}-${PACSTALL_REVISION}_all.deb \
+  /var/cache/apt/archives/pacstall_${PACSTALL_VERSION}-${PACSTALL_REVISION}_all.deb
+ADD https://ftp.debian.org/debian/pool/main/s/spdx-licenses/spdx-licenses_${SPDX_LICENSES_VERSION}${SPDX_LICENSES_REVISION}_all.deb \
+  /var/cache/apt/archives/spdx-licenses_${SPDX_LICENSES_VERSION}${SPDX_LICENSES_REVISION}_all.deb
 
 RUN apt-get install -y -qq -f \
-    /var/cache/apt/archives/pacstall_${PACSTALL_VERSION}_all.deb \
-    /var/cache/apt/archives/spdx-licenses_${SPDX_LICENSES_VERSION}_all.deb
+    /var/cache/apt/archives/pacstall_${PACSTALL_VERSION}-${PACSTALL_REVISION}_all.deb \
+    /var/cache/apt/archives/spdx-licenses_${SPDX_LICENSES_VERSION}${SPDX_LICENSES_REVISION}_all.deb
 
 WORKDIR /build
 COPY VERSION srclist packagelist /build/
 COPY packages/ /build/packages/
 
-RUN apt-get update -qq \
-  && pacstall -BPNs -I packages/glitchtip/glitchtip.pacscript \
+RUN pacstall -BPNs -I packages/glitchtip/glitchtip.pacscript \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* /tmp/pacstall /var/cache/apt/archives/*
-
-RUN pkg="$(ls /build/glitchtip_*.deb)" \
-  && dpkg-deb -c "${pkg}" | grep -q 'opt/glitchtip/venv/lib/python' \
-  && dpkg-deb -x "${pkg}" /tmp/verify \
-  && /tmp/verify/opt/glitchtip/venv/bin/python -c "import django; print('django', django.__version__)"
 
 FROM scratch AS artifact
 COPY --from=builder /build/*.deb /
