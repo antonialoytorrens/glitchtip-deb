@@ -2,7 +2,7 @@ name: Check GlitchTip version
 
 on:
   schedule:
-    - cron: '0 8 * * 1'
+    - cron: '0 8 * * *'
   workflow_dispatch:
     inputs:
       upstream_version:
@@ -54,27 +54,4 @@ jobs:
           gh issue create \
             --title "${TITLE}" \
             --label new-version \
-            --body "$(cat <<EOF
-## Summary
-
-A newer stable GlitchTip release is available on [release-monitoring.org](https://release-monitoring.org/project/392074/).
-
-| | Version |
-|---|---|
-| Packaged | \`${PACKAGED}\` |
-| Upstream stable | \`${NEW_VERSION}\` |
-
-## Checklist
-
-- [ ] Update [\`VERSION\`](VERSION) to \`${NEW_VERSION}\`
-- [ ] Run build with \`FETCH_SOURCES=true\` to download the new tags
-- [ ] Review [\`patches/\`](patches/) for compatibility
-- [ ] Verify CI build passes
-
-## Links
-
-- [Anitya project](https://release-monitoring.org/project/392074/)
-- [Backend tag v${NEW_VERSION}](https://gitlab.com/glitchtip/glitchtip-backend/-/tags/v${NEW_VERSION})
-- [Frontend tag v${NEW_VERSION}](https://gitlab.com/glitchtip/glitchtip-frontend/-/tags/v${NEW_VERSION})
-EOF
-)"
+            --body "GlitchTip ${NEW_VERSION} is available (packaged: ${PACKAGED}). Update VERSION, rebuild with FETCH_SOURCES=true, check patches/, and verify CI. See https://release-monitoring.org/project/392074/"
