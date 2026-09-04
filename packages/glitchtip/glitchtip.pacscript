@@ -1,6 +1,6 @@
 pkgname="glitchtip"
 pkgver="6.2.6"
-pkgrel="7"
+pkgrel="8"
 arch=('amd64')
 url="https://glitchtip.com/"
 license=('MIT')
@@ -294,10 +294,6 @@ print('>>> Database connection OK.')
     run_as_glitchtip "$venv/bin/python" "$src/manage.py" maintain_partitions || true
     run_as_glitchtip "$venv/bin/python" "$src/manage.py" collectstatic --no-input
 
-    if id -u www-data &>/dev/null; then
-        usermod -aG glitchtip www-data
-    fi
-
     chmod 750 /var/lib/glitchtip
     chmod -R g+rX /var/lib/glitchtip/static 2>/dev/null || true
 
@@ -326,7 +322,6 @@ pre_remove() {
     fi
     systemctl stop glitchtip glitchtip-worker 2>/dev/null || true
     systemctl disable glitchtip glitchtip-worker 2>/dev/null || true
-    gpasswd -d www-data glitchtip 2>/dev/null || true
 }
 
 post_remove() {

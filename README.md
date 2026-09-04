@@ -23,7 +23,7 @@ Frontend is taken from the upstream `build-assets` CI job (`assets.zip` → `dis
 
 ```bash
 make
-sudo dpkg -i glitchtip_$(cat VERSION)-pacstall7_amd64.deb
+sudo dpkg -i glitchtip_$(cat VERSION)-pacstall8_amd64.deb
 sudo apt-get install -f
 ```
 

@@ -1,6 +1,6 @@
 pkgname = glitchtip
 pkgver = 6.2.6
-pkgrel = 7
+pkgrel = 8
 arch = amd64
 url = https://glitchtip.com/
 license = MIT
